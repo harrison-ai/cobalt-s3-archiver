@@ -1,0 +1,12 @@
+.vscode
+**/.DS_Store
+
+# Rust build artifacts.
+target
+
+# Terraform-related local state files.
+.env
+.terraform
+*terraform.tfstate*
+*.tfvars
+

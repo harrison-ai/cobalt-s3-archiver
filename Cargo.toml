@@ -1,0 +1,18 @@
+# The Rust crates in this repository are organized into a cargo workspace,
+# which gives a number of advantages:
+#
+#  - build and linting commands can conveniently run across all crates
+#    from a single command.
+#  - they can share intermediate build state, which helps speed up overall
+#    compile times.
+#  - it makes it easier for Rust tooling (such as the analyzer in vscode)
+#    to operate correctly when editing files in this repository.
+#
+# Cargo commands executed in the repo root will by default operate on all
+# workspace members, while commands executed inside a specific crate directory
+# will operate on just that crate.
+
+[workspace]
+members = [
+    "src/s3-archiver",
+]
