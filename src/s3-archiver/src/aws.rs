@@ -41,7 +41,6 @@ enum AsyncMultipartUploadState<'a> {
     Closed,
 }
 
-#[derive(Clone)]
 struct AsyncMultipartUploadConfig<'a> {
     client: &'a Client,
     bucket: String,
@@ -172,15 +171,19 @@ impl<'a> AsyncMultipartUpload<'a> {
 
 impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
     fn poll_write(
-        mut self: Pin<&mut AsyncMultipartUpload<'a>>,
+        self: Pin<&mut AsyncMultipartUpload<'a>>,
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, Error>> {
         println!("Writing Bytes");
-        // I'm not sure how to work around borrow of two disjoint fields.
-        // I had lifetime issues trying to implement Split Borrows
-        let config = self.config.clone();
-        match &mut self.state {
+        // TODO: better understand "pin projection" and whether there's something
+        // clever we should do with it here. For now, taking the inner type out
+        // of the `Pin` seems to work as we don't actually depend on it being pinned.
+        // https://doc.rust-lang.org/std/pin/#projections-and-structural-pinning
+        let this = Pin::into_inner(self);
+        let state = &mut this.state;
+        let config = &this.config;
+        match state {
             AsyncMultipartUploadState::Writing {
                 uploads,
                 buffer,
@@ -200,7 +203,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                     std::mem::swap(buffer, &mut part);
                     //Upload a new part
                     let part_upload =
-                        AsyncMultipartUpload::upload_part(&config, part, *part_number);
+                        AsyncMultipartUpload::upload_part(config, part, *part_number);
                     uploads.push(part_upload);
                     *part_number += 1;
                 }
@@ -241,12 +244,18 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
     }
 
     fn poll_close<'b>(
-        mut self: Pin<&'b mut AsyncMultipartUpload<'a>>,
+        self: Pin<&'b mut AsyncMultipartUpload<'a>>,
         cx: &'b mut Context<'_>,
     ) -> Poll<Result<(), Error>> {
         println!("Closing");
-        let config = self.config.clone();
-        match &mut self.state {
+        // TODO: better understand "pin projection" and whether there's something
+        // clever we should do with it here. For now, taking the inner type out
+        // of the `Pin` seems to work as we don't actually depend on it being pinned.
+        // https://doc.rust-lang.org/std/pin/#projections-and-structural-pinning
+        let this = Pin::into_inner(self);
+        let state = &mut this.state;
+        let config = &this.config;
+        match state {
             AsyncMultipartUploadState::Writing {
                 buffer,
                 uploads,
@@ -256,13 +265,13 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 println!("Closing: Writing last bytes");
                 if !buffer.is_empty() {
                     let buff = mem::take(buffer);
-                    let part = AsyncMultipartUpload::upload_part(&config, buff, *part_number);
+                    let part = AsyncMultipartUpload::upload_part(config, buff, *part_number);
                     uploads.push(part);
                 }
                 //Poll all uploads, remove complete and fetch their results.
                 AsyncMultipartUpload::check_uploads(uploads, completed_parts, cx)?;
                 // Change state to Completeing parts
-                self.state = AsyncMultipartUploadState::CompletingParts {
+                *state = AsyncMultipartUploadState::CompletingParts {
                     uploads: mem::take(uploads),
                     completed_parts: mem::take(completed_parts),
                 };
@@ -278,7 +287,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 let completed_parts = mem::take(completed_parts);
                 let completing =
                     AsyncMultipartUpload::complete_multipart_upload(&config, completed_parts);
-                self.state = AsyncMultipartUploadState::Completing(completing);
+                *state = AsyncMultipartUploadState::Completing(completing);
                 cx.waker().wake_by_ref();
                 Poll::Pending
             }
@@ -303,7 +312,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                     .map(|_| ())
                     .map_err(|e| Error::new(ErrorKind::Other, e)); //set state to closed
                 println!("Closing: Done");
-                self.state = AsyncMultipartUploadState::Closed;
+                *state = AsyncMultipartUploadState::Closed;
                 cx.waker().wake_by_ref();
                 Poll::Ready(result)
             }
