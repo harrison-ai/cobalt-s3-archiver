@@ -1,11 +1,21 @@
 pub mod localstack {
 
+    use std::collections::HashMap;
     use testcontainers::{core::WaitFor, Image};
+
     const NAME: &str = "localstack/localstack";
     const TAG: &str = "latest";
 
     #[derive(Debug, Default)]
-    pub struct LocalStack;
+    pub struct LocalStack {
+        env_vars: HashMap<String, String>,
+    }
+
+    impl LocalStack {
+        pub fn new(env_vars: HashMap<String, String>) -> Self {
+            LocalStack { env_vars }
+        }
+    }
 
     impl Image for LocalStack {
         type Args = ();
@@ -27,6 +37,10 @@ pub mod localstack {
             let external_service_ports = 4510_u16..=4559;
             localstack_gateway.chain(external_service_ports).collect()
         }
+
+        fn env_vars(&self) -> Box<dyn Iterator<Item = (&String, &String)> + '_> {
+            Box::new(self.env_vars.iter())
+        }
     }
 }
 
@@ -36,12 +50,16 @@ pub mod aws {
     use aws_config::SdkConfig;
     use aws_sdk_s3::Client;
     use aws_sdk_s3::{Credentials, Endpoint};
-    use testcontainers::{clients::Cli, Container};
+    #[cfg(feature = "test_containers")]
+    use std::collections::HashMap;
+    #[cfg(feature = "test_containers")]
+    use testcontainers::clients::Cli;
+    use testcontainers::Container;
 
-    pub async fn localstack_sdkconfig(port: u16) -> SdkConfig {
+    pub async fn localstack_sdkconfig(host: &str, port: u16) -> SdkConfig {
         aws_config::from_env()
             .endpoint_resolver(Endpoint::immutable(
-                format!("http://localhost:{port}")
+                format!("http://{host}:{port}")
                     .parse()
                     .expect("Invalid URI"),
             ))
@@ -51,27 +69,36 @@ pub mod aws {
             .await
     }
 
-    pub async fn s3_client(endpoint_port: u16) -> Client {
-        let config = localstack_sdkconfig(endpoint_port).await;
+    pub async fn s3_client(host: &str, endpoint_port: u16) -> Client {
+        let config = localstack_sdkconfig(host, endpoint_port).await;
         Client::new(&config)
     }
 
     pub enum S3TestClient {
+        #[cfg(feature = "test_containers")]
         TestContainer(Cli),
-        DockerCompose(Client),
+        DockerCompose,
     }
 
     impl S3TestClient {
         pub async fn client(&self) -> (Option<Box<Container<LocalStack>>>, Client) {
             match self {
+                #[cfg(feature = "test_containers")]
                 Self::TestContainer(cli) => {
-                    let stack = Box::new(cli.run(LocalStack::default()));
+                    let stack = Box::new(cli.run(LocalStack::new(HashMap::from([(
+                        "SERVICES".into(),
+                        "s3".into(),
+                    )]))));
                     let endpoint_port = stack.get_host_port_ipv4(4566);
-                    let s3_client = s3_client(endpoint_port).await;
+                    let s3_client = s3_client("localhost", endpoint_port).await;
 
                     (Some(stack), s3_client)
                 }
-                Self::DockerCompose(client) => (None, client.clone()),
+                Self::DockerCompose => {
+                    let host = std::env::var("LOCALSTACK_HOSTNAME")
+                        .expect("LOCALSTACK_HOSTNAME must be set in docker compose");
+                    (None, s3_client(&host, 4566).await)
+                }
             }
         }
     }

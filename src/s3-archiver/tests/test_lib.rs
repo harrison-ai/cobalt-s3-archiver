@@ -12,8 +12,11 @@ use testcontainers::clients;
 
 #[tokio::test]
 async fn test_put_get() {
-    //#[cfg(feature = "test_containers")]
+    #[cfg(feature = "test_containers")]
     let test_client = S3TestClient::TestContainer(clients::Cli::default());
+    #[cfg(not(feature = "test_containers"))]
+    let test_client = S3TestClient::DockerCompose;
+
     let (_container, s3_client) = test_client.client().await;
 
     let test_bucket = "test-bucket";
@@ -59,11 +62,12 @@ async fn test_put_get() {
 
 #[tokio::test]
 async fn test_async_multipart_upload() {
-    let docker = clients::Cli::default();
-    let stack = docker.run(LocalStack::default());
+    #[cfg(feature = "test_containers")]
+    let test_client = S3TestClient::TestContainer(clients::Cli::default());
+    #[cfg(not(feature = "test_containers"))]
+    let test_client = S3TestClient::DockerCompose;
 
-    let endpoint_port = stack.get_host_port_ipv4(4566);
-    let s3_client = s3_client(endpoint_port).await;
+    let (_container, s3_client) = test_client.client().await;
 
     let test_bucket = "test-bucket";
     fixtures::create_bucket(&s3_client, test_bucket)

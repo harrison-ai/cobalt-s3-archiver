@@ -2,7 +2,7 @@ version: '3.7'
 services:
 
   cargo:
-    image: harrisonai/rust:1.60-0.2
+    image: harrisonai/rust:1.64
     entrypoint: cargo
     volumes:
       - '~/.cargo/registry:/usr/local/cargo/registry'
@@ -10,6 +10,13 @@ services:
       - '~/.cargo/git/db:/usr/local/cargo/git/db'
       - '.:/app'
     working_dir: '/app'
+    environment:
+      - LOCALSTACK_HOSTNAME=localstack
+      - AWS_DEFAULT_REGION=ap-southeast-2
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test    
+    depends_on:
+      - localstack
 
   shellcheck:
     image: koalaman/shellcheck:v0.8.0
@@ -18,7 +25,7 @@ services:
     working_dir: '/app'
 
   localstack:
-    image: localstack/localstack:1.0.3
+    image: localstack/localstack:1.1.0
     container_name: "${LOCALSTACK_DOCKER_NAME-localstack_main}"
     ports:
       - "127.0.0.1:4566:4566"            # LocalStack Gateway
@@ -33,8 +40,7 @@ services:
       - LOCALSTACK_API_KEY=${LOCALSTACK_API_KEY-}  # only required for Pro
       - DOCKER_HOST=unix:///var/run/docker.sock
       - AWS_DEFAULT_REGION=ap-southeast-2
+      - SERVICES=s3
     volumes:
       - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"
-      - "./scripts/init-localstack.sh:/docker-entrypoint-initaws.d/init-localstack.sh"
-      - "./test-data:/tmp/test-data"

@@ -1,16 +1,19 @@
 mod common;
 
+use common::aws::S3TestClient;
 use common::fixtures;
 use futures::prelude::*;
 use s3_archiver::aws::AsyncMultipartUpload;
+#[cfg(feature = "test_containers")]
 use testcontainers::clients;
 
 #[tokio::test]
 async fn test_put_10mb() {
-    let test_client = {
-        let docker = clients::Cli::default();
-        common::aws::S3TestClient::TestContainer(docker)
-    };
+    #[cfg(feature = "test_containers")]
+    let test_client = S3TestClient::TestContainer(clients::Cli::default());
+    #[cfg(not(feature = "test_containers"))]
+    let test_client = S3TestClient::DockerCompose;
+
     let (_container, client) = test_client.client().await;
     let test_bucket = "test-bucket";
     let dst_key = "dst-file.zip";
