@@ -98,9 +98,10 @@ pub async fn create_zip<'a, I>(
 where
     I: Iterator<Item = Result<S3Object>>,
 {
-    let mut upload = AsyncMultipartUpload::new(client, &dst.bucket, &dst.key)
-        .await?
-        .compat_write();
+    let mut upload =
+        AsyncMultipartUpload::new(client, &dst.bucket, &dst.key, 5_usize * 1024_usize.pow(2))
+            .await?
+            .compat_write();
     let mut zip = async_zip::write::ZipFileWriter::new(&mut upload);
     //TODO Turn this into a stream so the objects can be fetched async
     for src in srcs {

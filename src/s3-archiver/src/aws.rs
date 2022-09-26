@@ -55,12 +55,23 @@ pub struct AsyncMultipartUpload<'a> {
     state: AsyncMultipartUploadState<'a>,
 }
 
+const MIN_PART_SIZE: usize = 5_usize * 1024_usize.pow(2); // 5 Mib
+const MAX_PART_SIZE: usize = 5_usize * 1024_usize.pow(3); // 5 Gib
+
 impl<'a> AsyncMultipartUpload<'a> {
     pub async fn new(
         client: &'a Client,
         bucket: &'a str,
         key: &'a str,
+        part_size: usize,
     ) -> anyhow::Result<AsyncMultipartUpload<'a>> {
+        if part_size < MIN_PART_SIZE {
+            anyhow::bail!("part_size was {part_size}, can not be less than {MIN_PART_SIZE}")
+        }
+        if part_size > MAX_PART_SIZE {
+            anyhow::bail!("part_size was {part_size}, can not be more than {MAX_PART_SIZE}")
+        }
+
         let result = client
             .create_multipart_upload()
             .bucket(bucket)
@@ -68,6 +79,7 @@ impl<'a> AsyncMultipartUpload<'a> {
             .acl(ObjectCannedAcl::BucketOwnerFullControl)
             .send()
             .await?;
+
         use anyhow::Context;
         let upload_id = result.upload_id().context("Expected Upload Id")?;
 
@@ -176,7 +188,6 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, Error>> {
-        println!("Writing Bytes");
         // I'm not sure how to work around borrow of two disjoint fields.
         // I had lifetime issues trying to implement Split Borrows
         let config = self.config.clone();
@@ -216,7 +227,6 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        println!("Flushing bytes");
         //Ensure all pending uploads are completed.
         match &mut self.state {
             AsyncMultipartUploadState::Writing {
@@ -244,7 +254,6 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
         mut self: Pin<&'b mut AsyncMultipartUpload<'a>>,
         cx: &'b mut Context<'_>,
     ) -> Poll<Result<(), Error>> {
-        println!("Closing");
         let config = self.config.clone();
         match &mut self.state {
             AsyncMultipartUploadState::Writing {
@@ -253,7 +262,6 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 completed_parts,
                 part_number,
             } => {
-                println!("Closing: Writing last bytes");
                 if !buffer.is_empty() {
                     let buff = mem::take(buffer);
                     let part = AsyncMultipartUpload::upload_part(&config, buff, *part_number);
@@ -274,8 +282,9 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 completed_parts,
             } if uploads.is_empty() => {
                 //Once uploads are empty change state to Completing
-                println!("Closing: All parts uploaded. Completing Multipart");
-                let completed_parts = mem::take(completed_parts);
+                let mut completed_parts = mem::take(completed_parts);
+                // This was surprising but was needed to complete the upload.
+                completed_parts.sort_by_key(|p| p.part_number());
                 let completing =
                     AsyncMultipartUpload::complete_multipart_upload(&config, completed_parts);
                 self.state = AsyncMultipartUploadState::Completing(completing);
@@ -286,10 +295,6 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 uploads,
                 completed_parts,
             } => {
-                println!(
-                    "Closing: Completing Parts Pending uploads: {:?}",
-                    uploads.len()
-                );
                 //Poll all uploads, remove complete and fetch their results.
                 AsyncMultipartUpload::check_uploads(uploads, completed_parts, cx)?;
                 cx.waker().wake_by_ref();
@@ -297,12 +302,10 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
             }
             AsyncMultipartUploadState::Completing(fut) => {
                 //use ready! macro to wait for complete uploaded to be done
-                println!("Closing: Completing, waiting for completion of multipart.");
                 //ready! is like the ? but for Poll objects returning `Polling` if not Ready
                 let result = ready!(Pin::new(fut).poll(cx))
                     .map(|_| ())
                     .map_err(|e| Error::new(ErrorKind::Other, e)); //set state to closed
-                println!("Closing: Done");
                 self.state = AsyncMultipartUploadState::Closed;
                 cx.waker().wake_by_ref();
                 Poll::Ready(result)
@@ -312,5 +315,30 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 "Attempted to .flush() writer after .close().",
             ))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_part_size_too_small() {
+        let shared_config = aws_config::load_from_env().await;
+        let client = aws_sdk_s3::Client::new(&shared_config);
+        assert!(AsyncMultipartUpload::new(&client, "bucket", "key", 0_usize)
+            .await
+            .is_err())
+    }
+
+    #[tokio::test]
+    async fn test_part_size_too_big() {
+        let shared_config = aws_config::load_from_env().await;
+        let client = aws_sdk_s3::Client::new(&shared_config);
+        assert!(
+            AsyncMultipartUpload::new(&client, "bucket", "key", 5 * 1024_usize.pow(3) + 1)
+                .await
+                .is_err()
+        )
     }
 }

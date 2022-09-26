@@ -75,9 +75,10 @@ async fn test_async_multipart_upload() {
         .expect("Expected to create bucket");
     let test_key = "test-output.txt";
 
-    let mut upload = AsyncMultipartUpload::new(&s3_client, test_bucket, test_key)
-        .await
-        .expect("Expceted to create mulipart");
+    let mut upload =
+        AsyncMultipartUpload::new(&s3_client, test_bucket, test_key, 5 * 1024_usize.pow(2))
+            .await
+            .expect("Expceted to create mulipart");
 
     upload
         .write_all(b"test content")
