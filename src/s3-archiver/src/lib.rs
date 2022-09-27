@@ -63,15 +63,10 @@ impl TryFrom<String> for S3Object {
 #[derive(Debug, Clone, ValueEnum, Copy, PartialEq, Eq)]
 pub enum Compression {
     Stored,
-    #[cfg(feature = "deflate")]
     Deflate,
-    #[cfg(feature = "bzip2")]
     Bzip,
-    #[cfg(feature = "lzma")]
     Lzma,
-    #[cfg(feature = "zstd")]
     Zstd,
-    #[cfg(feature = "xz")]
     Xz,
 }
 
@@ -113,12 +108,13 @@ where
             .send()
             .await?;
         let opts = EntryOptions::new(
-            src.key.trim_start_matches(prefix_strip).to_owned(),
+            src.key.trim_start_matches(prefix_strip).into(),
             compression.into(),
         );
         let mut entry_writer = zip.write_entry_stream(opts).await?;
         let mut read = StreamReader::new(response.body);
         let _ = tokio::io::copy(&mut read, &mut entry_writer).await?;
+        entry_writer.close().await?;
     }
     zip.close().await?;
     upload.shutdown().await?;

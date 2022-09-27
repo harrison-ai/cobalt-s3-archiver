@@ -95,8 +95,8 @@ pub mod aws {
                     (Some(stack), s3_client)
                 }
                 Self::DockerCompose => {
-                    let host = std::env::var("LOCALSTACK_HOSTNAME")
-                        .expect("LOCALSTACK_HOSTNAME must be set in docker compose");
+                    let host =
+                        std::env::var("LOCALSTACK_HOSTNAME").unwrap_or_else(|_| "localhost".into());
                     (None, s3_client(&host, 4566).await)
                 }
             }
@@ -107,10 +107,63 @@ pub mod aws {
 pub mod fixtures {
 
     use anyhow::Result;
+    use aws_sdk_s3::error::HeadObjectError;
+    use aws_sdk_s3::error::HeadObjectErrorKind;
+    use aws_sdk_s3::types::ByteStream;
     use aws_sdk_s3::Client;
+    use aws_sdk_s3::types::SdkError;
 
     pub async fn create_bucket(client: &Client, bucket: &str) -> Result<()> {
         client.create_bucket().bucket(bucket).send().await?;
         Ok(())
+    }
+
+    pub async fn check_object_exists(client: &Client, obj: &s3_archiver::S3Object) -> Result<bool> {
+        let result = client
+            .head_object()
+            .bucket(&obj.bucket)
+            .key(&obj.key)
+            .send()
+            .await.map(|_|true);
+        match result {
+            Ok(_) => Ok(true),
+            Err(SdkError::ServiceError{
+                err: HeadObjectError{kind : HeadObjectErrorKind::NotFound(_), ..}, ..
+                }) => Ok(false),
+            err => err.map_err(anyhow::Error::from)
+        }
+    }
+
+
+    pub async fn fetch_bytes(client: &Client, obj: &s3_archiver::S3Object) -> Result<Vec<u8>> {
+        Ok(client
+            .get_object()
+            .bucket(&obj.bucket)
+            .key(&obj.key)
+            .send()
+            .await
+            .expect("Expceted dst key to exist")
+            .body
+            .collect()
+            .await
+            .expect("Expected a body")
+            .into_bytes()
+            .into())
+    }
+
+    pub async fn create_random_file(
+        client: &Client,
+        obj: &s3_archiver::S3Object,
+        size: usize,
+    ) -> Result<()> {
+        let data: Vec<_> = (0..size).map(|_| rand::random::<u8>()).collect();
+        Ok(client
+            .put_object()
+            .bucket(&obj.bucket)
+            .key(&obj.key)
+            .body(ByteStream::from(data))
+            .send()
+            .await
+            .map(|_| ())?)
     }
 }

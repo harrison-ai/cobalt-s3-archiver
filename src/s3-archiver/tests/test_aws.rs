@@ -109,7 +109,6 @@ async fn test_put_7mb() {
     assert_eq!(body_len, data_len);
 }
 
-
 #[tokio::test]
 #[cfg(feature = "test_containers")]
 async fn test_fail_write() {
@@ -131,7 +130,6 @@ async fn test_fail_write() {
     upload.write(&vec![0; data_len]).await.unwrap();
     assert!(upload.flush().await.is_err());
 }
-
 
 #[tokio::test]
 #[cfg(feature = "test_containers")]

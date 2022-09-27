@@ -7,18 +7,13 @@ publish = false
 
 
 [features]
-default = ["deflate", "bzip2", "lzma", "zstd", "xz"]
+default = []
 
-deflate = ["async_zip/deflate"]
-bzip2 = ["async_zip/bzip2"]
-lzma = ["async_zip/lzma"]
-zstd = ["async_zip/zstd"]
-xz = ["async_zip/xz"]
 test_containers = []
 
 [dependencies]
 anyhow = "1"
-async_zip = { version = "0.0.8" }
+async_zip = { version = "0.0.7" }
 aws-config = "0.48.0"
 aws-sdk-s3 = "0.18.0"
 clap = { version = "3.2.21", features = ["derive"] }
@@ -36,6 +31,7 @@ name = "s3_archiver"
 path = "src/lib.rs"
 
 [dev-dependencies]
+rand = "0.8.5"
 testcontainers = "0.14.0"
 
 

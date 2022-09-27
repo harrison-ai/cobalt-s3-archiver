@@ -60,9 +60,9 @@ dependencies = [
 
 [[package]]
 name = "async_zip"
-version = "0.0.8"
+version = "0.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76c7255e8cf3719aaed04f4cb181f3a79ae53bd45c0aba1866b8969ac888ed80"
+checksum = "f0a5c419dca9559f15d04befbf9ff01c39ca16d4c0abd56f60daaf87a386b929"
 dependencies = [
  "async-compression",
  "async_io_utilities",
@@ -1349,6 +1349,7 @@ dependencies = [
  "aws-sdk-s3",
  "clap",
  "futures",
+ "rand",
  "testcontainers",
  "tokio",
  "tokio-util",
