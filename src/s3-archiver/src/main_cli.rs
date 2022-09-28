@@ -2,7 +2,7 @@ use anyhow::Result;
 use aws_sdk_s3::Client;
 use clap::Parser;
 use s3_archiver::{Compression, S3Object};
-use std::io;
+use std::io::{BufRead, BufReader};
 
 #[derive(Parser)]
 struct Args {
@@ -21,7 +21,16 @@ async fn main() -> Result<()> {
 
     let config = aws_config::load_from_env().await;
     let client = Client::new(&config);
-    let objects = io::stdin()
+
+    create_zip_from_read(&client, &mut BufReader::new(std::io::stdin()), &args).await
+}
+
+async fn create_zip_from_read(
+    client: &Client,
+    input: &mut impl BufRead,
+    args: &Args,
+) -> Result<()> {
+    let objects = input
         .lines()
         .map(|x| x.map_err(anyhow::Error::from))
         .map(|x| x.and_then(S3Object::try_from));
@@ -31,7 +40,7 @@ async fn main() -> Result<()> {
         objects,
         args.prefix_strip.as_deref(),
         args.compression,
-        &args.output_location.try_into()?,
+        &args.output_location.clone().try_into()?,
     )
     .await
 }
