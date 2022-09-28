@@ -126,6 +126,7 @@ pub mod fixtures {
     use aws_sdk_s3::types::SdkError;
     use aws_sdk_s3::Client;
     use crc::{Crc, CRC_32_ISCSI};
+    use s3_archiver::{Compression, S3Object};
 
     const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
@@ -248,40 +249,90 @@ pub mod fixtures {
     where
         R: tokio::io::AsyncRead + core::marker::Unpin,
     {
-        let entry_name = entry_reader.entry().name().to_owned();
         let file_bytes = entry_reader.read_to_end_crc().await?;
         Ok(CASTAGNOLI.checksum(&file_bytes))
     }
 
+    pub struct CheckZipArgs<'a> {
+        pub dst_obj: S3Object,
+        pub prefix_to_strip: Option<&'a str>,
+        pub src_bucket: String,
+        pub src_keys: Vec<&'a str>,
+        pub file_size: usize,
+        pub compression: Compression,
+    }
+
+    impl<'a> CheckZipArgs<'a> {
+        pub fn new(
+            dst_obj: S3Object,
+            prefix_to_strip: Option<&'a str>,
+            src_bucket: &str,
+            src_keys: Vec<&'a str>,
+            file_size: usize,
+            compression: Compression,
+        ) -> Self {
+            CheckZipArgs {
+                dst_obj,
+                prefix_to_strip,
+                src_bucket: src_bucket.into(),
+                src_keys,
+                file_size,
+                compression,
+            }
+        }
+    }
+
+    impl<'a> Default for CheckZipArgs<'a> {
+        fn default() -> Self {
+            let dst_obj = S3Object::new("dst-bucket", "dst_check_file.zip");
+            let prefix_to_strip = Option::<&str>::None;
+            let src_bucket = "src-bucket";
+            let src_files = vec!["src-file_1.txt", "src-file_2.txt"];
+            let file_size = 1024_usize.pow(2);
+            let compression = Compression::Stored;
+
+            CheckZipArgs::new(
+                dst_obj,
+                prefix_to_strip,
+                src_bucket,
+                src_files,
+                file_size,
+                compression,
+            )
+        }
+    }
+
     pub async fn create_and_validate_zip<'a>(
         client: &Client,
-        dst_obj: &s3_archiver::S3Object,
-        src_bucket: &str,
-        src_keys: &[&str],
-        prefix_to_strip: Option<&'a str>,
-        file_size: usize,
-        compression: s3_archiver::Compression,
+        args: &'a CheckZipArgs<'a>,
     ) -> Result<()> {
-        create_bucket(client, &dst_obj.bucket).await.unwrap();
-        if dst_obj.bucket != src_bucket {
-            create_bucket(client, src_bucket).await.unwrap();
+        create_bucket(client, &args.dst_obj.bucket).await.unwrap();
+        if args.dst_obj.bucket != args.src_bucket {
+            create_bucket(client, &args.src_bucket).await.unwrap();
         }
-        let src_objs: Vec<_> = s3_object_from_keys(src_bucket, src_keys).collect();
-        create_random_files(client, file_size, &src_objs)
+        let src_objs: Vec<_> = s3_object_from_keys(&args.src_bucket, &args.src_keys).collect();
+        create_random_files(client, args.file_size, &src_objs)
             .await
             .unwrap();
         s3_archiver::create_zip(
             client,
             src_objs.into_iter().map(Ok),
-            prefix_to_strip,
-            compression,
-            dst_obj,
+            args.prefix_to_strip,
+            args.compression,
+            &args.dst_obj,
         )
         .await
         .expect("Expected zip creation");
 
-        let files_to_validate: Vec<_> = s3_object_from_keys(src_bucket, src_keys).collect();
+        let files_to_validate: Vec<_> =
+            s3_object_from_keys(&args.src_bucket, &args.src_keys).collect();
 
-        validate_zip(client, dst_obj, prefix_to_strip, files_to_validate.iter()).await
+        validate_zip(
+            client,
+            &args.dst_obj,
+            args.prefix_to_strip,
+            files_to_validate.iter(),
+        )
+        .await
     }
 }
