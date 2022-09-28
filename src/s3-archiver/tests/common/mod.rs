@@ -118,6 +118,7 @@ pub mod aws {
 pub mod fixtures {
 
     use anyhow::Result;
+    use async_zip::read::mem::ZipFileReader;
     use aws_sdk_s3::error::HeadObjectError;
     use aws_sdk_s3::error::HeadObjectErrorKind;
     use aws_sdk_s3::types::ByteStream;
@@ -189,6 +190,40 @@ pub mod fixtures {
     {
         for obj in keys {
             create_random_file(client, obj, size).await?;
+        }
+        Ok(())
+    }
+
+    pub fn s3_object_from_keys<'a, I>(
+        bucket: &'a str,
+        keys: I,
+    ) -> impl Iterator<Item = s3_archiver::S3Object> + 'a
+    where
+        I: IntoIterator<Item = &'a str> + 'a,
+    {
+        keys.into_iter()
+            .map(|k| s3_archiver::S3Object::new(bucket, k))
+    }
+
+    pub async fn validate_zip<'a, I>(
+        client: &Client,
+        zip_obj: &s3_archiver::S3Object,
+        prefix_to_strip: Option<&'a str>,
+        file_names: I,
+    ) -> Result<()>
+    where
+        I: IntoIterator<Item = &'a str> + 'a,
+    {
+        let bytes = fetch_bytes(client, zip_obj).await?;
+
+        //It was not possible to get this to work using the streaming ZipFileReader
+        //This issue show similar issues https://github.com/Majored/rs-async-zip/issues/29
+        let zip = ZipFileReader::new(&bytes).await?;
+        for (entry, name) in zip.entries().iter().zip(file_names) {
+            assert_eq!(
+                entry.name(),
+                name.trim_start_matches(prefix_to_strip.unwrap_or_default())
+            );
         }
         Ok(())
     }

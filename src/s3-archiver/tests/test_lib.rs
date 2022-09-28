@@ -1,9 +1,5 @@
 mod common;
 
-#[cfg(feature = "test_containers")]
-use testcontainers::clients;
-
-use async_zip::read::mem::ZipFileReader;
 use common::aws::S3TestClient;
 use common::fixtures;
 use s3_archiver::{Compression, S3Object};
@@ -28,7 +24,7 @@ async fn test_put_get() {
     s3_archiver::create_zip(
         &s3_client,
         vec![Ok(src)].into_iter(),
-        "",
+        None,
         Compression::Stored,
         &dst,
     )
@@ -47,15 +43,12 @@ async fn test_check_zip() {
 
     let test_bucket = "test-bucket";
     let dst_key = "dst_check_file.zip";
-
+    let prefix_to_strip = "";
     common::fixtures::create_bucket(&s3_client, test_bucket)
         .await
         .unwrap();
     let src_files = ["src-file_1.txt", "src-file_2.txt"];
-    let src_objs: Vec<_> = src_files
-        .into_iter()
-        .map(|key| S3Object::new(test_bucket, key))
-        .collect();
+    let src_objs: Vec<_> = fixtures::s3_object_from_keys(test_bucket, src_files).collect();
     fixtures::create_random_files(&s3_client, 1024_usize.pow(2), &src_objs)
         .await
         .unwrap();
@@ -63,19 +56,14 @@ async fn test_check_zip() {
     s3_archiver::create_zip(
         &s3_client,
         src_objs.into_iter().map(Ok),
-        "",
+        Some(prefix_to_strip),
         Compression::Stored,
         &dst,
     )
     .await
     .expect("Expected zip creation");
 
-    let bytes = fixtures::fetch_bytes(&s3_client, &dst).await.unwrap();
-
-    //It was not possible to get this to work using the streaming ZipFileReader
-    //This issue show similar issues https://github.com/Majored/rs-async-zip/issues/29
-    let zip = ZipFileReader::new(&bytes).await.unwrap();
-    for (entry, name) in zip.entries().iter().zip(src_files) {
-        assert_eq!(entry.name(), name)
-    }
+    fixtures::validate_zip(&s3_client, &dst, None, src_files)
+        .await
+        .unwrap();
 }

@@ -86,7 +86,7 @@ impl From<Compression> for AsyncCompression {
 pub async fn create_zip<'a, I>(
     client: &aws_sdk_s3::Client,
     srcs: I,
-    prefix_strip: &str,
+    prefix_strip: Option<&'a str>,
     compression: Compression,
     dst: &S3Object,
 ) -> Result<()>
@@ -108,7 +108,9 @@ where
             .send()
             .await?;
         let opts = EntryOptions::new(
-            src.key.trim_start_matches(prefix_strip).into(),
+            src.key
+                .trim_start_matches(prefix_strip.unwrap_or_default())
+                .into(),
             compression.into(),
         );
         let mut entry_writer = zip.write_entry_stream(opts).await?;

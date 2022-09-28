@@ -9,7 +9,7 @@ struct Args {
     /// S3 output location `s3://{bucket}/{key}`
     output_location: url::Url,
     /// Prefix to remove from input keys
-    prefix_strip: String,
+    prefix_strip: Option<String>,
     //Compression to use for the files
     #[clap(value_enum)]
     compression: Compression,
@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
     s3_archiver::create_zip(
         &client,
         objects,
-        &args.prefix_strip,
+        args.prefix_strip.as_deref(),
         args.compression,
         &args.output_location.try_into()?,
     )
