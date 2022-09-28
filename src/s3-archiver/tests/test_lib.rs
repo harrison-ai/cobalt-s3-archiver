@@ -56,16 +56,19 @@ async fn test_check_zip() {
         .into_iter()
         .map(|key| S3Object::new(test_bucket, key))
         .collect();
-    for obj in &src_objs {
-        fixtures::create_random_file(&s3_client, obj, 1024_usize.pow(2))
-            .await
-            .unwrap();
-    }
-    let dst: S3Object = S3Object::new(test_bucket, dst_key);
-    let src_results = src_objs.into_iter().map(Ok);
-    s3_archiver::create_zip(&s3_client, src_results, "", Compression::Stored, &dst)
+    fixtures::create_random_files(&s3_client, 1024_usize.pow(2), &src_objs)
         .await
-        .expect("Expected zip creation");
+        .unwrap();
+    let dst: S3Object = S3Object::new(test_bucket, dst_key);
+    s3_archiver::create_zip(
+        &s3_client,
+        src_objs.into_iter().map(Ok),
+        "",
+        Compression::Stored,
+        &dst,
+    )
+    .await
+    .expect("Expected zip creation");
 
     let bytes = fixtures::fetch_bytes(&s3_client, &dst).await.unwrap();
 

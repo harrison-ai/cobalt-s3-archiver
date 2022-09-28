@@ -182,4 +182,14 @@ pub mod fixtures {
             .await
             .map(|_| ())?)
     }
+
+    pub async fn create_random_files<'a, I>(client: &Client, size: usize, keys: I) -> Result<()>
+    where
+        I: IntoIterator<Item = &'a s3_archiver::S3Object> + 'a,
+    {
+        for obj in keys {
+            create_random_file(client, obj, size).await?;
+        }
+        Ok(())
+    }
 }

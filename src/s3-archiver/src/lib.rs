@@ -91,7 +91,7 @@ pub async fn create_zip<'a, I>(
     dst: &S3Object,
 ) -> Result<()>
 where
-    I: Iterator<Item = Result<S3Object>>,
+    I: IntoIterator<Item = Result<S3Object>>,
 {
     let mut upload =
         AsyncMultipartUpload::new(client, &dst.bucket, &dst.key, 5_usize * 1024_usize.pow(2))
