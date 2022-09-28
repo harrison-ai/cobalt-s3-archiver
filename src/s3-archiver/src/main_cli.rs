@@ -36,7 +36,7 @@ async fn create_zip_from_read(
         .map(|x| x.and_then(S3Object::try_from));
 
     s3_archiver::create_zip(
-        &client,
+        client,
         objects,
         args.prefix_strip.as_deref(),
         args.compression,

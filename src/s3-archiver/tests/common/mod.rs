@@ -245,7 +245,7 @@ pub mod fixtures {
         Ok(CASTAGNOLI.checksum(&fetch_bytes(client, obj).await?))
     }
 
-    pub async fn zip_entry_cr32<'a, R>(entry_reader: ZipEntryReader<'a, R>) -> Result<u32>
+    pub async fn zip_entry_cr32<R>(entry_reader: ZipEntryReader<'_, R>) -> Result<u32>
     where
         R: tokio::io::AsyncRead + core::marker::Unpin,
     {
