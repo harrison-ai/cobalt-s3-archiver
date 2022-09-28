@@ -4,12 +4,13 @@ use common::aws::S3TestClient;
 use common::fixtures;
 use futures::prelude::*;
 use s3_archiver::aws::AsyncMultipartUpload;
+use s3_archiver::S3Object;
 #[cfg(feature = "test_containers")]
 use testcontainers::clients;
 
 #[tokio::test]
 async fn test_put_single_part() {
-   let test_client = S3TestClient::default();
+    let test_client = S3TestClient::default();
     let (_container, client) = test_client.client().await;
     let test_bucket = "test-bucket";
     let dst_key = "dst-file.zip";
@@ -24,16 +25,10 @@ async fn test_put_single_part() {
     upload.write_all(&vec![0; buffer_len]).await.unwrap();
     upload.close().await.unwrap();
 
-    let result = client
-        .get_object()
-        .bucket(test_bucket)
-        .key(dst_key)
-        .send()
+    let body = fixtures::fetch_bytes(&client, &S3Object::new(test_bucket, dst_key))
         .await
-        .expect("Expceted dst key to exist");
-
-    let body_len = result.body.collect().await.unwrap().into_bytes().len();
-    assert_eq!(body_len, buffer_len);
+        .unwrap();
+    assert_eq!(body.len(), buffer_len);
 }
 #[tokio::test]
 async fn test_put_10mb() {
@@ -43,31 +38,22 @@ async fn test_put_10mb() {
     let dst_key = "dst-file.zip";
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
+    let data_len = 10 * 1024_usize.pow(2);
 
     let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, dst_key, 5_usize * 1024_usize.pow(2))
+        AsyncMultipartUpload::new(&client, test_bucket, dst_key, 5 * 1024_usize.pow(2))
             .await
             .unwrap();
-    upload
-        .write_all(&vec![0; 10 * 1024_usize.pow(2)])
+    upload.write_all(&vec![0; data_len]).await.unwrap();
+    upload.close().await.unwrap();
+    let body = fixtures::fetch_bytes(&client, &S3Object::new(test_bucket, dst_key))
         .await
         .unwrap();
-    upload.close().await.unwrap();
-
-    let result = client
-        .get_object()
-        .bucket(test_bucket)
-        .key(dst_key)
-        .send()
-        .await
-        .expect("Expceted dst key to exist");
-
-    let body_len = result.body.collect().await.unwrap().into_bytes().len();
-    assert_eq!(body_len, 10 * 1024_usize.pow(2));
+    assert_eq!(body.len(), data_len);
 }
 
 #[tokio::test]
-async fn test_put_7mb() {
+async fn test_put_14mb() {
     let test_client = S3TestClient::default();
     let (_container, client) = test_client.client().await;
     let test_bucket = "test-bucket";
@@ -76,7 +62,7 @@ async fn test_put_7mb() {
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
     let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, dst_key, 5 * 1025_usize.pow(2))
+        AsyncMultipartUpload::new(&client, test_bucket, dst_key, 5 * 1024_usize.pow(2))
             .await
             .unwrap();
 
@@ -84,17 +70,6 @@ async fn test_put_7mb() {
 
     upload.write_all(&vec![0; data_len]).await.unwrap();
     upload.close().await.unwrap();
-
-    let result = client
-        .get_object()
-        .bucket(test_bucket)
-        .key(dst_key)
-        .send()
-        .await
-        .expect("Expceted dst key to exist");
-
-    let body_len = result.body.collect().await.unwrap().into_bytes().len();
-    assert_eq!(body_len, data_len);
 }
 
 #[tokio::test]
@@ -108,7 +83,7 @@ async fn test_fail_write() {
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
     let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, dst_key, 5 * 1025_usize.pow(2))
+        AsyncMultipartUpload::new(&client, test_bucket, dst_key, 5 * 1024_usize.pow(2))
             .await
             .unwrap();
 
@@ -130,7 +105,7 @@ async fn test_fail_close() {
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
     let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, dst_key, 5 * 1025_usize.pow(2))
+        AsyncMultipartUpload::new(&client, test_bucket, dst_key, 5 * 1024_usize.pow(2))
             .await
             .unwrap();
 

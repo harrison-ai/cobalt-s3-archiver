@@ -112,7 +112,7 @@ pub mod aws {
         fn default() -> Self {
             S3TestClient::DockerCompose
         }
-     }
+    }
 }
 
 pub mod fixtures {
@@ -121,8 +121,8 @@ pub mod fixtures {
     use aws_sdk_s3::error::HeadObjectError;
     use aws_sdk_s3::error::HeadObjectErrorKind;
     use aws_sdk_s3::types::ByteStream;
-    use aws_sdk_s3::Client;
     use aws_sdk_s3::types::SdkError;
+    use aws_sdk_s3::Client;
 
     pub async fn create_bucket(client: &Client, bucket: &str) -> Result<()> {
         client.create_bucket().bucket(bucket).send().await?;
@@ -135,16 +135,21 @@ pub mod fixtures {
             .bucket(&obj.bucket)
             .key(&obj.key)
             .send()
-            .await.map(|_|true);
+            .await
+            .map(|_| true);
         match result {
             Ok(_) => Ok(true),
-            Err(SdkError::ServiceError{
-                err: HeadObjectError{kind : HeadObjectErrorKind::NotFound(_), ..}, ..
-                }) => Ok(false),
-            err => err.map_err(anyhow::Error::from)
+            Err(SdkError::ServiceError {
+                err:
+                    HeadObjectError {
+                        kind: HeadObjectErrorKind::NotFound(_),
+                        ..
+                    },
+                ..
+            }) => Ok(false),
+            err => err.map_err(anyhow::Error::from),
         }
     }
-
 
     pub async fn fetch_bytes(client: &Client, obj: &s3_archiver::S3Object) -> Result<Vec<u8>> {
         Ok(client
