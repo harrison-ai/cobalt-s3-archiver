@@ -41,29 +41,22 @@ async fn test_check_zip() {
     let test_client = S3TestClient::default();
     let (_container, s3_client) = test_client.client().await;
 
-    let test_bucket = "test-bucket";
-    let dst_key = "dst_check_file.zip";
-    let prefix_to_strip = "";
-    common::fixtures::create_bucket(&s3_client, test_bucket)
-        .await
-        .unwrap();
+    let dst_obj = S3Object::new("dst-bucket", "dst_check_file.zip");
+    let prefix_to_strip = Option::<&str>::None;
+    let src_bucket = "src-bucket";
     let src_files = ["src-file_1.txt", "src-file_2.txt"];
-    let src_objs: Vec<_> = fixtures::s3_object_from_keys(test_bucket, src_files).collect();
-    fixtures::create_random_files(&s3_client, 1024_usize.pow(2), &src_objs)
-        .await
-        .unwrap();
-    let dst: S3Object = S3Object::new(test_bucket, dst_key);
-    s3_archiver::create_zip(
+    let file_size = 1024_usize.pow(2);
+    let compression = Compression::Stored;
+
+    fixtures::create_and_validate_zip(
         &s3_client,
-        src_objs.into_iter().map(Ok),
-        Some(prefix_to_strip),
-        Compression::Stored,
-        &dst,
+        &dst_obj,
+        src_bucket,
+        &src_files,
+        prefix_to_strip,
+        file_size,
+        compression,
     )
     .await
-    .expect("Expected zip creation");
-
-    fixtures::validate_zip(&s3_client, &dst, None, src_files)
-        .await
-        .unwrap();
+    .unwrap();
 }

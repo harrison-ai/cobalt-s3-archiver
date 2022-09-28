@@ -31,6 +31,7 @@ name = "s3_archiver"
 path = "src/lib.rs"
 
 [dev-dependencies]
+crc = "3.0.0"
 rand = "0.8.5"
 testcontainers = "0.14.0"
 

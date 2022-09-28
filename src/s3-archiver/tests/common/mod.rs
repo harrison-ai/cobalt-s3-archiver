@@ -119,11 +119,15 @@ pub mod fixtures {
 
     use anyhow::Result;
     use async_zip::read::mem::ZipFileReader;
+    use async_zip::read::ZipEntryReader;
     use aws_sdk_s3::error::HeadObjectError;
     use aws_sdk_s3::error::HeadObjectErrorKind;
     use aws_sdk_s3::types::ByteStream;
     use aws_sdk_s3::types::SdkError;
     use aws_sdk_s3::Client;
+    use crc::{Crc, CRC_32_ISCSI};
+
+    const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
     pub async fn create_bucket(client: &Client, bucket: &str) -> Result<()> {
         client.create_bucket().bucket(bucket).send().await?;
@@ -199,10 +203,11 @@ pub mod fixtures {
         keys: I,
     ) -> impl Iterator<Item = s3_archiver::S3Object> + 'a
     where
-        I: IntoIterator<Item = &'a str> + 'a,
+        I: IntoIterator + 'a,
+        I::Item: AsRef<str>,
     {
         keys.into_iter()
-            .map(|k| s3_archiver::S3Object::new(bucket, k))
+            .map(move |k| s3_archiver::S3Object::new(bucket, k))
     }
 
     pub async fn validate_zip<'a, I>(
@@ -212,19 +217,71 @@ pub mod fixtures {
         file_names: I,
     ) -> Result<()>
     where
-        I: IntoIterator<Item = &'a str> + 'a,
+        I: IntoIterator<Item = &'a s3_archiver::S3Object> + 'a,
     {
         let bytes = fetch_bytes(client, zip_obj).await?;
 
         //It was not possible to get this to work using the streaming ZipFileReader
         //This issue show similar issues https://github.com/Majored/rs-async-zip/issues/29
-        let zip = ZipFileReader::new(&bytes).await?;
-        for (entry, name) in zip.entries().iter().zip(file_names) {
+        let zip = &mut ZipFileReader::new(&bytes).await?;
+        let num_entries = zip.entries().len();
+        for (index, src) in (0..num_entries).zip(file_names) {
+            let src_crc = object_cr32(client, src).await?;
+            let entry_reader = zip.entry_reader(index).await?;
+            let entry_name = entry_reader.entry().name().to_owned();
+            let dst_crc = zip_entry_cr32(entry_reader).await?;
+            assert_eq!(src_crc, dst_crc);
             assert_eq!(
-                entry.name(),
-                name.trim_start_matches(prefix_to_strip.unwrap_or_default())
+                entry_name,
+                src.key
+                    .trim_start_matches(prefix_to_strip.unwrap_or_default())
             );
         }
         Ok(())
+    }
+
+    pub async fn object_cr32(client: &Client, obj: &s3_archiver::S3Object) -> Result<u32> {
+        Ok(CASTAGNOLI.checksum(&fetch_bytes(client, obj).await?))
+    }
+
+    pub async fn zip_entry_cr32<'a, R>(entry_reader: ZipEntryReader<'a, R>) -> Result<u32>
+    where
+        R: tokio::io::AsyncRead + core::marker::Unpin,
+    {
+        let entry_name = entry_reader.entry().name().to_owned();
+        let file_bytes = entry_reader.read_to_end_crc().await?;
+        Ok(CASTAGNOLI.checksum(&file_bytes))
+    }
+
+    pub async fn create_and_validate_zip<'a>(
+        client: &Client,
+        dst_obj: &s3_archiver::S3Object,
+        src_bucket: &str,
+        src_keys: &[&str],
+        prefix_to_strip: Option<&'a str>,
+        file_size: usize,
+        compression: s3_archiver::Compression,
+    ) -> Result<()> {
+        create_bucket(client, &dst_obj.bucket).await.unwrap();
+        if dst_obj.bucket != src_bucket {
+            create_bucket(client, src_bucket).await.unwrap();
+        }
+        let src_objs: Vec<_> = s3_object_from_keys(src_bucket, src_keys).collect();
+        create_random_files(client, file_size, &src_objs)
+            .await
+            .unwrap();
+        s3_archiver::create_zip(
+            client,
+            src_objs.into_iter().map(Ok),
+            prefix_to_strip,
+            compression,
+            dst_obj,
+        )
+        .await
+        .expect("Expected zip creation");
+
+        let files_to_validate: Vec<_> = s3_object_from_keys(src_bucket, src_keys).collect();
+
+        validate_zip(client, dst_obj, prefix_to_strip, files_to_validate.iter()).await
     }
 }

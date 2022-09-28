@@ -18,10 +18,10 @@ pub struct S3Object {
 }
 
 impl S3Object {
-    pub fn new(bucket: &str, key: &str) -> Self {
+    pub fn new(bucket: impl AsRef<str>, key: impl AsRef<str>) -> Self {
         S3Object {
-            bucket: bucket.to_owned(),
-            key: key.trim_start_matches('/').to_owned(),
+            bucket: bucket.as_ref().to_owned(),
+            key: key.as_ref().trim_start_matches('/').to_owned(),
         }
     }
 }
