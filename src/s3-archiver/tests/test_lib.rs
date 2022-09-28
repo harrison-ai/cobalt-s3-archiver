@@ -9,11 +9,7 @@ use s3_archiver::{Compression, S3Object};
 
 #[tokio::test]
 async fn test_put_get() {
-    #[cfg(feature = "test_containers")]
-    let test_client = S3TestClient::TestContainer(clients::Cli::default());
-    #[cfg(not(feature = "test_containers"))]
-    let test_client = S3TestClient::DockerCompose;
-
+    let test_client = S3TestClient::default();
     let (_container, s3_client) = test_client.client().await;
 
     let test_bucket = "test-bucket";
@@ -43,11 +39,7 @@ async fn test_put_get() {
 
 #[tokio::test]
 async fn test_check_zip() {
-    #[cfg(feature = "test_containers")]
-    let test_client = S3TestClient::TestContainer(clients::Cli::default());
-    #[cfg(not(feature = "test_containers"))]
-    let test_client = S3TestClient::DockerCompose;
-
+   let test_client = S3TestClient::default();
     let (_container, s3_client) = test_client.client().await;
 
     let test_bucket = "test-bucket";

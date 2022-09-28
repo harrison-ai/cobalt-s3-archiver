@@ -102,6 +102,17 @@ pub mod aws {
             }
         }
     }
+
+    impl Default for S3TestClient {
+        #[cfg(feature = "test_containers")]
+        fn default() -> Self {
+            S3TestClient::TestContainer(Cli::default())
+        }
+        #[cfg(not(feature = "test_containers"))]
+        fn default() -> Self {
+            S3TestClient::DockerCompose
+        }
+     }
 }
 
 pub mod fixtures {

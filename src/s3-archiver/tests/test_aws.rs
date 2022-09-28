@@ -9,11 +9,7 @@ use testcontainers::clients;
 
 #[tokio::test]
 async fn test_put_single_part() {
-    #[cfg(feature = "test_containers")]
-    let test_client = S3TestClient::TestContainer(clients::Cli::default());
-    #[cfg(not(feature = "test_containers"))]
-    let test_client = S3TestClient::DockerCompose;
-
+   let test_client = S3TestClient::default();
     let (_container, client) = test_client.client().await;
     let test_bucket = "test-bucket";
     let dst_key = "dst-file.zip";
@@ -41,11 +37,7 @@ async fn test_put_single_part() {
 }
 #[tokio::test]
 async fn test_put_10mb() {
-    #[cfg(feature = "test_containers")]
-    let test_client = S3TestClient::TestContainer(clients::Cli::default());
-    #[cfg(not(feature = "test_containers"))]
-    let test_client = S3TestClient::DockerCompose;
-
+    let test_client = S3TestClient::default();
     let (_container, client) = test_client.client().await;
     let test_bucket = "test-bucket";
     let dst_key = "dst-file.zip";
@@ -76,11 +68,7 @@ async fn test_put_10mb() {
 
 #[tokio::test]
 async fn test_put_7mb() {
-    #[cfg(feature = "test_containers")]
-    let test_client = S3TestClient::TestContainer(clients::Cli::default());
-    #[cfg(not(feature = "test_containers"))]
-    let test_client = S3TestClient::DockerCompose;
-
+    let test_client = S3TestClient::default();
     let (_container, client) = test_client.client().await;
     let test_bucket = "test-bucket";
     let dst_key = "dst-file.zip";
@@ -112,7 +100,7 @@ async fn test_put_7mb() {
 #[tokio::test]
 #[cfg(feature = "test_containers")]
 async fn test_fail_write() {
-    let test_client = S3TestClient::TestContainer(clients::Cli::default());
+    let test_client = S3TestClient::default();
     let (container, client) = test_client.client().await;
     let test_bucket = "test-bucket";
     let dst_key = "dst-file.zip";
@@ -134,7 +122,7 @@ async fn test_fail_write() {
 #[tokio::test]
 #[cfg(feature = "test_containers")]
 async fn test_fail_close() {
-    let test_client = S3TestClient::TestContainer(clients::Cli::default());
+    let test_client = S3TestClient::default();
     let (container, client) = test_client.client().await;
     let test_bucket = "test-bucket";
     let dst_key = "dst-file.zip";
