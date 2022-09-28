@@ -52,59 +52,56 @@ async fn test_check_zip_deflate() {
     let test_client = S3TestClient::default();
     let (_container, s3_client) = test_client.client().await;
 
-    let args = fixtures::CheckZipArgs{
+    let args = fixtures::CheckZipArgs {
         compression: Compression::Deflate,
         ..fixtures::CheckZipArgs::default()
     };
-    
+
     fixtures::create_and_validate_zip(&s3_client, &args)
         .await
         .unwrap();
 }
-
 
 #[tokio::test]
 async fn test_check_zip_bzip() {
     let test_client = S3TestClient::default();
     let (_container, s3_client) = test_client.client().await;
 
-    let args = fixtures::CheckZipArgs{
+    let args = fixtures::CheckZipArgs {
         compression: Compression::Bzip,
         ..fixtures::CheckZipArgs::default()
     };
-    
+
     fixtures::create_and_validate_zip(&s3_client, &args)
         .await
         .unwrap();
 }
-
 
 #[tokio::test]
 async fn test_check_zip_lzma() {
     let test_client = S3TestClient::default();
     let (_container, s3_client) = test_client.client().await;
 
-    let args = fixtures::CheckZipArgs{
+    let args = fixtures::CheckZipArgs {
         compression: Compression::Lzma,
         ..fixtures::CheckZipArgs::default()
     };
-    
+
     fixtures::create_and_validate_zip(&s3_client, &args)
         .await
         .unwrap();
 }
-
 
 #[tokio::test]
 async fn test_check_zip_zstd() {
     let test_client = S3TestClient::default();
     let (_container, s3_client) = test_client.client().await;
 
-    let args = fixtures::CheckZipArgs{
+    let args = fixtures::CheckZipArgs {
         compression: Compression::Zstd,
         ..fixtures::CheckZipArgs::default()
     };
-    
+
     fixtures::create_and_validate_zip(&s3_client, &args)
         .await
         .unwrap();
@@ -115,13 +112,32 @@ async fn test_check_zip_xz() {
     let test_client = S3TestClient::default();
     let (_container, s3_client) = test_client.client().await;
 
-    let args = fixtures::CheckZipArgs{
+    let args = fixtures::CheckZipArgs {
         compression: Compression::Xz,
         ..fixtures::CheckZipArgs::default()
     };
-    
+
     fixtures::create_and_validate_zip(&s3_client, &args)
         .await
         .unwrap();
 }
 
+#[tokio::test]
+async fn test_check_zip_with_dirs() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let args = fixtures::CheckZipArgs {
+        src_keys: vec![
+            "src.txt",
+            "dir/src_file_1.txt",
+            "dir/src_file_2.txt",
+            "second_dir/src_file_1.txt",
+        ],
+        ..fixtures::CheckZipArgs::default()
+    };
+
+    fixtures::create_and_validate_zip(&s3_client, &args)
+        .await
+        .unwrap();
+}
