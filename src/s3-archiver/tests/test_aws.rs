@@ -5,8 +5,6 @@ use common::fixtures;
 use futures::prelude::*;
 use s3_archiver::aws::AsyncMultipartUpload;
 use s3_archiver::S3Object;
-#[cfg(feature = "test_containers")]
-use testcontainers::clients;
 
 #[tokio::test]
 async fn test_put_single_part() {
@@ -90,7 +88,7 @@ async fn test_fail_write() {
     let data_len = 6 * 1024_usize.pow(2);
 
     drop(container);
-    upload.write(&vec![0; data_len]).await.unwrap();
+    upload.write_all(&vec![0; data_len]).await.unwrap();
     assert!(upload.flush().await.is_err());
 }
 
@@ -112,6 +110,6 @@ async fn test_fail_close() {
     let data_len = 6 * 1024_usize.pow(2);
 
     drop(container);
-    upload.write(&vec![0; data_len]).await.unwrap();
+    upload.write_all(&vec![0; data_len]).await.unwrap();
     assert!(upload.close().await.is_err());
 }

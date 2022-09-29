@@ -141,3 +141,81 @@ async fn test_check_zip_with_dirs() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn test_check_zip_with_prefix() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let args = fixtures::CheckZipArgs {
+        src_keys: vec![
+            "prefix/src.txt",
+            "prefix/dir/src_file_1.txt",
+            "prefix/dir/src_file_2.txt",
+            "prefix/second_dir/src_file_1.txt",
+        ],
+        prefix_to_strip: Some("prefix/"),
+        ..fixtures::CheckZipArgs::default()
+    };
+
+    fixtures::create_and_validate_zip(&s3_client, &args)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_check_zip_with_prefix_that_removes_key() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let args = fixtures::CheckZipArgs {
+        src_keys: vec![
+            //Yes this is strange key but S3 allows it.
+            "prefix/src/",
+        ],
+        prefix_to_strip: Some("prefix/src/"),
+        ..fixtures::CheckZipArgs::default()
+    };
+
+    assert!(fixtures::create_and_validate_zip(&s3_client, &args)
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn test_check_zip_with_prefix_that_starts_with_slash() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let args = fixtures::CheckZipArgs {
+        src_keys: vec![
+            //Yes this is strange key but S3 allows it.
+            "prefix/src/",
+        ],
+        prefix_to_strip: Some("/prefix/src/"),
+        ..fixtures::CheckZipArgs::default()
+    };
+
+    assert!(fixtures::create_and_validate_zip(&s3_client, &args)
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn test_check_zip_with_prefix_that_does_not_end_with_slash() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let args = fixtures::CheckZipArgs {
+        src_keys: vec![
+            //Yes this is strange key but S3 allows it.
+            "prefix/src/",
+        ],
+        prefix_to_strip: Some("prefix/src"),
+        ..fixtures::CheckZipArgs::default()
+    };
+
+    assert!(fixtures::create_and_validate_zip(&s3_client, &args)
+        .await
+        .is_err());
+}

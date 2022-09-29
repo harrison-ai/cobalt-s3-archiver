@@ -93,32 +93,50 @@ pub async fn create_zip<'a, I>(
 where
     I: IntoIterator<Item = Result<S3Object>>,
 {
+    //S3 keys can start with "/" but this is a little confusing
+    anyhow::ensure!(
+        prefix_strip.filter(|s| s.starts_with('/')).is_none(),
+        "prefix_strip must not start with `/`"
+    );
+    //Fail early to ensure that the dir structure in the Zip does not have '/' at the root.
+    anyhow::ensure!(
+        prefix_strip.filter(|s| s.ends_with('/')).is_some(),
+        "prefix_srip must end with `/`"
+    );
+
+    //Create the upload and the zip writer.
     let mut upload =
         AsyncMultipartUpload::new(client, &dst.bucket, &dst.key, 5_usize * 1024_usize.pow(2))
             .await?
             .compat_write();
     let mut zip = async_zip::write::ZipFileWriter::new(&mut upload);
-    //TODO Turn this into a stream so the objects can be fetched async
+
+    //Copy each src object into the zip correcting the path based on the `prefix_strip`
     for src in srcs {
         let src = src?;
+        // Entry_path is
+        let entry_path = src.key.trim_start_matches(prefix_strip.unwrap_or_default());
+        anyhow::ensure!(
+            !entry_path.is_empty(),
+            "{} with out prefix {prefix_strip:?} is an invalid entry ",
+            src.key
+        );
+        println!("Adding file with {entry_path} from src_key {}", src.key);
         let response = client
             .get_object()
             .bucket(&src.bucket)
             .key(&src.key)
             .send()
             .await?;
-        let opts = EntryOptions::new(
-            src.key
-                .trim_start_matches(prefix_strip.unwrap_or_default())
-                .into(),
-            compression.into(),
-        );
+        let opts = EntryOptions::new(entry_path.to_owned(), compression.into());
         let mut entry_writer = zip.write_entry_stream(opts).await?;
         let mut read = StreamReader::new(response.body);
         let _ = tokio::io::copy(&mut read, &mut entry_writer).await?;
+        // If this is not done the Zip file produced sitently corrupts
         entry_writer.close().await?;
     }
     zip.close().await?;
+    //The zip writer does not close the multipart upload
     upload.shutdown().await?;
     Ok(())
 }

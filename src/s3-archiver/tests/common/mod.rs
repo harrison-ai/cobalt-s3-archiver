@@ -306,14 +306,12 @@ pub mod fixtures {
         client: &Client,
         args: &'a CheckZipArgs<'a>,
     ) -> Result<()> {
-        create_bucket(client, &args.dst_obj.bucket).await.unwrap();
+        create_bucket(client, &args.dst_obj.bucket).await?;
         if args.dst_obj.bucket != args.src_bucket {
-            create_bucket(client, &args.src_bucket).await.unwrap();
+            create_bucket(client, &args.src_bucket).await?;
         }
         let src_objs: Vec<_> = s3_object_from_keys(&args.src_bucket, &args.src_keys).collect();
-        create_random_files(client, args.file_size, &src_objs)
-            .await
-            .unwrap();
+        create_random_files(client, args.file_size, &src_objs).await?;
         s3_archiver::create_zip(
             client,
             src_objs.into_iter().map(Ok),
@@ -321,8 +319,7 @@ pub mod fixtures {
             args.compression,
             &args.dst_obj,
         )
-        .await
-        .expect("Expected zip creation");
+        .await?;
 
         let files_to_validate: Vec<_> =
             s3_object_from_keys(&args.src_bucket, &args.src_keys).collect();
