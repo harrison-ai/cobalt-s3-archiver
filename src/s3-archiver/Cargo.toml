@@ -14,9 +14,10 @@ test_containers = []
 [dependencies]
 anyhow = "1"
 async_zip = { version = "0.0.7" }
-aws-config = "0.48.0"
-aws-sdk-s3 = "0.18.0"
+aws-config = "0.46.0"
+aws-sdk-s3 = "0.16.0"
 clap = { version = "3.2.21", features = ["derive"] }
+cobalt-aws = "0.7.0"
 futures = "0.3.24"
 tokio = { version = "1.21.1", features = ["macros", "rt", "rt-multi-thread"] }
 tokio-util = { version = "0.7.4", features = ["compat"] }
@@ -31,6 +32,7 @@ name = "s3_archiver"
 path = "src/lib.rs"
 
 [dev-dependencies]
+assert_cmd = "2.0.4"
 crc = "3.0.0"
 rand = "0.8.5"
 testcontainers = "0.14.0"

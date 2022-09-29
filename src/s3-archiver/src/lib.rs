@@ -10,6 +10,7 @@ use tokio_util::io::StreamReader;
 use url::Url;
 
 /// A bucket key pair for a S3Object
+#[derive(Debug, PartialEq, Eq)]
 pub struct S3Object {
     /// The bucket the object is in.
     pub bucket: String,
@@ -100,10 +101,11 @@ where
     );
     //Fail early to ensure that the dir structure in the Zip does not have '/' at the root.
     anyhow::ensure!(
-        prefix_strip.filter(|s| s.ends_with('/')).is_some(),
-        "prefix_srip must end with `/`"
+        prefix_strip.is_none() || prefix_strip.filter(|s| s.ends_with('/')).is_some(),
+        "prefix_strip must end with `/`"
     );
 
+    println!("Creating zip file from dst_key {:?}", dst);
     //Create the upload and the zip writer.
     let mut upload =
         AsyncMultipartUpload::new(client, &dst.bucket, &dst.key, 5_usize * 1024_usize.pow(2))

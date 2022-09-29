@@ -74,6 +74,10 @@ pub mod aws {
         Client::new(&config)
     }
 
+    pub fn localstack_host() -> String {
+        std::env::var("LOCALSTACK_HOSTNAME").unwrap_or_else(|_| "localhost".into())
+    }
+
     pub enum S3TestClient {
         #[cfg(feature = "test_containers")]
         TestContainer(Cli),
@@ -95,13 +99,13 @@ pub mod aws {
                     (Some(stack), s3_client)
                 }
                 Self::DockerCompose => {
-                    let host =
-                        std::env::var("LOCALSTACK_HOSTNAME").unwrap_or_else(|_| "localhost".into());
+                    let host = localstack_host();
                     (None, s3_client(&host, 4566).await)
                 }
             }
         }
     }
+
 
     impl Default for S3TestClient {
         #[cfg(feature = "test_containers")]

@@ -3,23 +3,26 @@ use aws_sdk_s3::Client;
 use clap::Parser;
 use s3_archiver::{Compression, S3Object};
 use std::io::{BufRead, BufReader};
+use cobalt_aws::config;
 
 #[derive(Parser)]
 struct Args {
     /// S3 output location `s3://{bucket}/{key}`
     output_location: url::Url,
-    /// Prefix to remove from input keys
-    prefix_strip: Option<String>,
-    //Compression to use for the files
-    #[clap(value_enum)]
+    #[clap(value_enum, 
+           default_value="stored",
+           short='c', help="Compression to use")]
     compression: Compression,
-}
+    /// Prefix to remove from input keys
+    #[clap(short='p')]
+    prefix_strip: Option<String>,
+ }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let config = aws_config::load_from_env().await;
+    let config = config::load_from_env().await?;
     let client = Client::new(&config);
 
     create_zip_from_read(&client, &mut BufReader::new(std::io::stdin()), &args).await
