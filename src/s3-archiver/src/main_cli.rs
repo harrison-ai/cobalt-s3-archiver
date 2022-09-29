@@ -1,22 +1,25 @@
 use anyhow::Result;
 use aws_sdk_s3::Client;
 use clap::Parser;
+use cobalt_aws::config;
 use s3_archiver::{Compression, S3Object};
 use std::io::{BufRead, BufReader};
-use cobalt_aws::config;
 
 #[derive(Parser)]
 struct Args {
     /// S3 output location `s3://{bucket}/{key}`
     output_location: url::Url,
-    #[clap(value_enum, 
-           default_value="stored",
-           short='c', help="Compression to use")]
+    #[clap(
+        value_enum,
+        default_value = "stored",
+        short = 'c',
+        help = "Compression to use"
+    )]
     compression: Compression,
     /// Prefix to remove from input keys
-    #[clap(short='p')]
+    #[clap(short = 'p')]
     prefix_strip: Option<String>,
- }
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {

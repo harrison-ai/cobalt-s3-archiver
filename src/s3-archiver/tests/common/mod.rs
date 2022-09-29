@@ -106,7 +106,6 @@ pub mod aws {
         }
     }
 
-
     impl Default for S3TestClient {
         #[cfg(feature = "test_containers")]
         fn default() -> Self {
@@ -284,6 +283,10 @@ pub mod fixtures {
                 compression,
             }
         }
+
+        pub fn src_objs(&'a self) -> impl Iterator<Item = S3Object> + 'a {
+            s3_object_from_keys(&self.src_bucket, &self.src_keys)
+        }
     }
 
     impl<'a> Default for CheckZipArgs<'a> {
@@ -306,28 +309,39 @@ pub mod fixtures {
         }
     }
 
+    pub async fn create_src_files(
+        client: &Client,
+        src_bucket: &str,
+        src_objs: &Vec<S3Object>,
+        file_size: usize,
+    ) -> Result<()> {
+        create_bucket(client, src_bucket).await?;
+        create_random_files(client, file_size, src_objs).await?;
+        Ok(())
+    }
+
     pub async fn create_and_validate_zip<'a>(
         client: &Client,
         args: &'a CheckZipArgs<'a>,
     ) -> Result<()> {
+        create_src_files(
+            client,
+            &args.src_bucket,
+            &args.src_objs().collect(),
+            args.file_size,
+        )
+        .await?;
         create_bucket(client, &args.dst_obj.bucket).await?;
-        if args.dst_obj.bucket != args.src_bucket {
-            create_bucket(client, &args.src_bucket).await?;
-        }
-        let src_objs: Vec<_> = s3_object_from_keys(&args.src_bucket, &args.src_keys).collect();
-        create_random_files(client, args.file_size, &src_objs).await?;
         s3_archiver::create_zip(
             client,
-            src_objs.into_iter().map(Ok),
+            args.src_objs().map(Ok),
             args.prefix_to_strip,
             args.compression,
             &args.dst_obj,
         )
         .await?;
 
-        let files_to_validate: Vec<_> =
-            s3_object_from_keys(&args.src_bucket, &args.src_keys).collect();
-
+        let files_to_validate: Vec<_> = args.src_objs().collect();
         validate_zip(
             client,
             &args.dst_obj,

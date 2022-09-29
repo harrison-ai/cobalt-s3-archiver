@@ -10,7 +10,7 @@ use tokio_util::io::StreamReader;
 use url::Url;
 
 /// A bucket key pair for a S3Object
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct S3Object {
     /// The bucket the object is in.
     pub bucket: String,
