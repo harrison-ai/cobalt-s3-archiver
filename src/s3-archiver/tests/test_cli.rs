@@ -32,18 +32,28 @@ async fn test_cli_run() {
 
     let keys = ["key_1.txt", "key_2.txt"];
     let src_bucket = "src-bucket";
-    let dst_bucket = "dst-bucket";
-    fixtures::create_bucket(&client, src_bucket).await.unwrap();
-    fixtures::create_bucket(&client, dst_bucket).await.unwrap();
-    let src_objects: Vec<_> = fixtures::s3_object_from_keys(src_bucket, keys).collect();
-    fixtures::create_random_files(&client, 1024_usize.pow(2), &src_objects)
+    let dst_obj = s3_archiver::S3Object::new("dst-bucket", "output.zip");
+    let src_objs = fixtures::s3_object_from_keys(src_bucket, &keys).collect();
+    fixtures::create_src_files(&client, src_bucket, &src_objs, 1024_usize.pow(2))
         .await
         .unwrap();
-
+    fixtures::create_bucket(&client, &dst_obj.bucket)
+        .await
+        .unwrap();
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
-    cmd.arg(format!("s3://{dst_bucket}/output.zip"));
-    for key in &keys {
-        cmd.write_stdin(format!("s3://{src_bucket}/{key}"));
-    }
-    cmd.assert().success();
+    cmd.arg(format!("s3://{}/{}", dst_obj.bucket, dst_obj.key));
+    cmd.write_stdin(
+        keys.map(|key| format!("s3://{src_bucket}/{key}"))
+            .join("\n"),
+    );
+    //cmd.assert().success();
+    use std::io::{self, Write};
+    let output = cmd.output().unwrap();
+    io::stdout().write_all(&output.stdout).unwrap();
+    io::stderr().write_all(&output.stderr).unwrap();
+
+    assert!(output.status.success());
+    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter())
+        .await
+        .unwrap()
 }
