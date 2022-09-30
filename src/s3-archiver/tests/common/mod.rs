@@ -129,7 +129,13 @@ pub mod fixtures {
     use aws_sdk_s3::types::SdkError;
     use aws_sdk_s3::Client;
     use crc::{Crc, CRC_32_ISCSI};
+    use rand::distributions::{Alphanumeric, DistString};
+    use rand::Rng;
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
     use s3_archiver::{Compression, S3Object};
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
 
     const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
@@ -260,7 +266,7 @@ pub mod fixtures {
         pub dst_obj: S3Object,
         pub prefix_to_strip: Option<&'a str>,
         pub src_bucket: String,
-        pub src_keys: Vec<&'a str>,
+        pub src_keys: Vec<String>,
         pub file_size: usize,
         pub compression: Compression,
     }
@@ -270,7 +276,7 @@ pub mod fixtures {
             dst_obj: S3Object,
             prefix_to_strip: Option<&'a str>,
             src_bucket: &str,
-            src_keys: Vec<&'a str>,
+            src_keys: Vec<String>,
             file_size: usize,
             compression: Compression,
         ) -> Self {
@@ -287,6 +293,36 @@ pub mod fixtures {
         pub fn src_objs(&'a self) -> impl Iterator<Item = S3Object> + 'a {
             s3_object_from_keys(&self.src_bucket, &self.src_keys)
         }
+
+        pub fn seeded_args<R: Rng>(
+            rng: &mut R,
+            src_file_count: usize,
+            src_dirs: Option<&[&str]>,
+        ) -> Self {
+            let dst_file = gen_random_file_name(rng);
+            let dst_obj = S3Object::new("dst-bucket", dst_file);
+            let prefix_to_strip = Option::<&str>::None;
+            let src_bucket = "src-bucket";
+            let src_keys = match src_dirs {
+                Some(dirs) => gen_random_file_names(rng, src_file_count)
+                    .into_iter()
+                    .zip(dirs.iter().cycle())
+                    .map(|(f, d)| format!("{d}/{f}"))
+                    .collect(),
+                None => gen_random_file_names(rng, src_file_count),
+            };
+            //gen_random_file_names(rng, src_file_count);
+            let file_size = 1024_usize.pow(2);
+            let compression = Compression::Stored;
+            CheckZipArgs::new(
+                dst_obj,
+                prefix_to_strip,
+                src_bucket,
+                src_keys,
+                file_size,
+                compression,
+            )
+        }
     }
 
     impl<'a> Default for CheckZipArgs<'a> {
@@ -294,7 +330,10 @@ pub mod fixtures {
             let dst_obj = S3Object::new("dst-bucket", "dst_check_file.zip");
             let prefix_to_strip = Option::<&str>::None;
             let src_bucket = "src-bucket";
-            let src_files = vec!["src-file_1.txt", "src-file_2.txt"];
+            let src_files = vec!["src-file_1.txt", "src-file_2.txt"]
+                .into_iter()
+                .map(String::from)
+                .collect();
             let file_size = 1024_usize.pow(2);
             let compression = Compression::Stored;
 
@@ -349,5 +388,24 @@ pub mod fixtures {
             files_to_validate.iter(),
         )
         .await
+    }
+
+    pub fn seeded_rng<H: Hash + ?Sized>(seed: &H) -> impl Rng {
+        let mut hasher = DefaultHasher::new();
+        seed.hash(&mut hasher);
+        ChaCha8Rng::seed_from_u64(hasher.finish())
+    }
+
+    pub fn gen_random_file_name<R: Rng>(rng: &mut R) -> String {
+        Alphanumeric.sample_string(rng, 16)
+    }
+
+    pub fn gen_random_file_names<R: Rng>(rng: &mut R, count: usize) -> Vec<String> {
+        //let mut rng = ChaCha8Rng::seed_from_u64(hasher.finish());
+        (0..count).map(|_| gen_random_file_name(rng)).collect()
+    }
+
+    pub fn str_vec_to_owned(v: &[&str]) -> Vec<String> {
+        v.iter().map(|&s| s.into()).collect()
     }
 }

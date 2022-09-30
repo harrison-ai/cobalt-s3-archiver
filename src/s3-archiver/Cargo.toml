@@ -34,7 +34,9 @@ path = "src/lib.rs"
 [dev-dependencies]
 assert_cmd = "2.0.4"
 crc = "3.0.0"
+function_name = "0.3.0"
 rand = "0.8.5"
+rand_chacha = "0.3.1"
 testcontainers = "0.14.0"
 
 
