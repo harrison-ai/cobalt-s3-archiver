@@ -68,15 +68,11 @@ validate: cargo-init ci-fmt
 
 ## build:				build all the docker images for this service
 build:
-	for IMAGE in $(IMAGES); do \
-		$(DOCKER_BUILD) -t $(ECR_PREFIX)$$IMAGE$(ECR_SUFFIX) -f ./src/$$IMAGE/Dockerfile .; \
-	done;
+	$(DOCKER_BUILD) -t $(ECR_PREFIX)s3-archiver$(ECR_SUFFIX) -f ./Dockerfile .
 
 ## publish:				publish docker images to ECR
 publish: build
-	for IMAGE in $(IMAGES); do \
-		docker push $(ECR_PREFIX)$$IMAGE$(ECR_SUFFIX); \
-	done;
+	docker push $(ECR_PREFIX)s3-archiver$(ECR_SUFFIX) -f ./Dockerfile .
 
 ## pull:				docker-compose pull
 pull:

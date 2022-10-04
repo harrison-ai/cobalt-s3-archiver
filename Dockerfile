@@ -1,7 +1,7 @@
 ###############
 # Builder image
 ###############
-FROM --platform=$BUILDPLATFORM harrisonai/rust:1.60-0.2 as builder
+FROM --platform=$BUILDPLATFORM harrisonai/rust:1.64-1 as builder
 
 ARG BUILD_PROFILE=dev
 
@@ -16,6 +16,7 @@ COPY . .
 
 RUN mkdir ./bin
 
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
     # This will build and package all bin targets in the crate.
@@ -40,4 +41,4 @@ RUN --mount=type=cache,target=/var/cache/apt \
         ca-certificates
 
 COPY --from=builder /build/bin/* /bin/
-ENTRYPOINT ["/bin/s3-archiver"]
+ENTRYPOINT ["/bin/s3-archiver-cli"]
