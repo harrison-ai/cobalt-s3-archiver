@@ -1,18 +1,42 @@
-# The Rust crates in this repository are organized into a cargo workspace,
-# which gives a number of advantages:
-#
-#  - build and linting commands can conveniently run across all crates
-#    from a single command.
-#  - they can share intermediate build state, which helps speed up overall
-#    compile times.
-#  - it makes it easier for Rust tooling (such as the analyzer in vscode)
-#    to operate correctly when editing files in this repository.
-#
-# Cargo commands executed in the repo root will by default operate on all
-# workspace members, while commands executed inside a specific crate directory
-# will operate on just that crate.
+[package]
+name = "s3-archiver"
+version = "0.1.0"
+edition = "2021"
+authors = ["harrison.ai Data Engineering <dataengineering@harrison.ai>"]
+publish = false
 
-[workspace]
-members = [
-    "src/s3-archiver",
-]
+
+[features]
+default = []
+
+test_containers = []
+
+[dependencies]
+anyhow = "1"
+async_zip = { version = "0.0.7" }
+aws-config = "0.46.0"
+aws-sdk-s3 = "0.16.0"
+clap = { version = "3.2.21", features = ["derive"] }
+cobalt-aws = "0.7.0"
+futures = "0.3.24"
+tokio = { version = "1.21.1", features = ["macros", "rt", "rt-multi-thread"] }
+tokio-util = { version = "0.7.4", features = ["compat"] }
+url = { version = "2.3.1", features = ["serde"] }
+
+[[bin]]
+name = "s3-archiver-cli"
+path = "src/main_cli.rs"
+
+[lib]
+name = "s3_archiver"
+path = "src/lib.rs"
+
+[dev-dependencies]
+assert_cmd = "2.0.4"
+crc = "3.0.0"
+function_name = "0.3.0"
+rand = "0.8.5"
+rand_chacha = "0.3.1"
+testcontainers = "0.14.0"
+
+
