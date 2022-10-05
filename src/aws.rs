@@ -83,7 +83,6 @@ impl<'a> AsyncMultipartUpload<'a> {
         use anyhow::Context;
         let upload_id = result.upload_id().context("Expected Upload Id")?;
 
-        let part_size = 5_usize * 1024_usize.pow(2);
         Ok(AsyncMultipartUpload {
             config: AsyncMultipartUploadConfig {
                 client,
