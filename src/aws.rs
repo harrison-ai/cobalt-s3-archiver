@@ -238,7 +238,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 if uploads.is_empty() {
                     Poll::Ready(Ok(()))
                 } else {
-                    cx.waker().wake_by_ref();
+                    //Assume that polled futures will trigger a wake
                     Poll::Pending
                 }
             }
@@ -268,13 +268,19 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 }
                 //Poll all uploads, remove complete and fetch their results.
                 AsyncMultipartUpload::check_uploads(uploads, completed_parts, cx)?;
-                // Change state to Completeing parts
+                // If all uploads have completed trigger a wakeup,
+                // there are no Pending Futures that will trigger this.
+                if uploads.is_empty() {
+                    //Potential to short cut to `Completing` here
+                    //but a linear state flow is simpler to follow
+                    cx.waker().wake_by_ref();
+                }
+                // Change state to Completing parts
                 self.state = AsyncMultipartUploadState::CompletingParts {
                     uploads: mem::take(uploads),
                     completed_parts: mem::take(completed_parts),
                 };
-                cx.waker().wake_by_ref();
-                Poll::Pending
+               Poll::Pending
             }
             AsyncMultipartUploadState::CompletingParts {
                 uploads,
@@ -287,6 +293,8 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 let completing =
                     AsyncMultipartUpload::complete_multipart_upload(&config, completed_parts);
                 self.state = AsyncMultipartUploadState::Completing(completing);
+                // The completing future has not been polled so
+                // a wakeup must be trigger.
                 cx.waker().wake_by_ref();
                 Poll::Pending
             }
@@ -296,7 +304,13 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
             } => {
                 //Poll all uploads, remove complete and fetch their results.
                 AsyncMultipartUpload::check_uploads(uploads, completed_parts, cx)?;
-                cx.waker().wake_by_ref();
+                // If all uploads have completed trigger a wakeup,
+                // there are no Pending Futures that will trigger this.
+                if uploads.is_empty() {
+                    //Potential to short cut to `Completing` here
+                    //but a linear state flow is simpler to follow
+                    cx.waker().wake_by_ref();
+                }
                 Poll::Pending
             }
             AsyncMultipartUploadState::Completing(fut) => {
@@ -306,7 +320,6 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                     .map(|_| ())
                     .map_err(|e| Error::new(ErrorKind::Other, e)); //set state to closed
                 self.state = AsyncMultipartUploadState::Closed;
-                cx.waker().wake_by_ref();
                 Poll::Ready(result)
             }
             AsyncMultipartUploadState::Closed => Poll::Ready(Err(Error::new(
