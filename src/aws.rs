@@ -280,7 +280,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                     uploads: mem::take(uploads),
                     completed_parts: mem::take(completed_parts),
                 };
-               Poll::Pending
+                Poll::Pending
             }
             AsyncMultipartUploadState::CompletingParts {
                 uploads,
