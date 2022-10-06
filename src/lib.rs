@@ -67,10 +67,8 @@ impl FromStr for S3Object {
     type Err = anyhow::Error;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-       value.parse::<Url>()?.try_into() 
+        value.parse::<Url>()?.try_into()
     }
-
-
 }
 
 #[derive(Debug, Clone, ValueEnum, Copy, PartialEq, Eq)]
