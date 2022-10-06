@@ -48,6 +48,7 @@ struct AsyncMultipartUploadConfig<'a> {
     key: String,
     upload_id: String,
     part_size: usize,
+    max_uploading_parts: usize,
 }
 
 pub struct AsyncMultipartUpload<'a> {
@@ -58,18 +59,25 @@ pub struct AsyncMultipartUpload<'a> {
 const MIN_PART_SIZE: usize = 5_usize * 1024_usize.pow(2); // 5 Mib
 const MAX_PART_SIZE: usize = 5_usize * 1024_usize.pow(3); // 5 Gib
 
+const DEFAULT_MAX_UPLOADING_PARTS: usize = 100;
+
 impl<'a> AsyncMultipartUpload<'a> {
     pub async fn new(
         client: &'a Client,
         bucket: &'a str,
         key: &'a str,
         part_size: usize,
+        max_uploading_parts: Option<usize>,
     ) -> anyhow::Result<AsyncMultipartUpload<'a>> {
         if part_size < MIN_PART_SIZE {
             anyhow::bail!("part_size was {part_size}, can not be less than {MIN_PART_SIZE}")
         }
         if part_size > MAX_PART_SIZE {
             anyhow::bail!("part_size was {part_size}, can not be more than {MAX_PART_SIZE}")
+        }
+
+        if max_uploading_parts.unwrap_or(DEFAULT_MAX_UPLOADING_PARTS) == 0 {
+            anyhow::bail!("Max uploading parts must not be 0")
         }
 
         let result = client
@@ -90,6 +98,7 @@ impl<'a> AsyncMultipartUpload<'a> {
                 key: key.into(),
                 upload_id: upload_id.into(),
                 part_size,
+                max_uploading_parts: max_uploading_parts.unwrap_or(DEFAULT_MAX_UPLOADING_PARTS),
             },
             state: AsyncMultipartUploadState::Writing {
                 uploads: vec![],
@@ -197,7 +206,19 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 part_number,
                 completed_parts,
             } => {
-                buffer.extend(buf);
+                //Poll current uploads to make space for in coming data
+                AsyncMultipartUpload::check_uploads(uploads, completed_parts, cx)?;
+                //only take enough bytes to fill remaining upload capacity
+                let upload_capacity = ((config.max_uploading_parts - uploads.len())
+                    * config.part_size)
+                    - buffer.len();
+                let bytes_to_write = std::cmp::min(upload_capacity, buf.len());
+                // No capacity to upload
+                if bytes_to_write == 0 {
+                    uploads.is_empty().then(|| cx.waker().wake_by_ref());
+                    return Poll::Pending;
+                }
+                buffer.extend(&buf[..bytes_to_write]);
 
                 //keep pushing uploads until the buffer is small than the part size
                 while buffer.len() >= config.part_size {
@@ -214,7 +235,8 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 }
                 //Poll all uploads, remove complete and fetch their results.
                 AsyncMultipartUpload::check_uploads(uploads, completed_parts, cx)?;
-                Poll::Ready(Ok(buf.len()))
+                //Return number of bytes written from the input
+                Poll::Ready(Ok(bytes_to_write))
             }
             _ => Poll::Ready(Err(Error::new(
                 ErrorKind::Other,
@@ -259,6 +281,11 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 completed_parts,
                 part_number,
             } => {
+                //make space for final upload
+                AsyncMultipartUpload::check_uploads(uploads, completed_parts, cx)?;
+                if config.max_uploading_parts - uploads.len() == 0 {
+                    return Poll::Pending;
+                }
                 if !buffer.is_empty() {
                     let buff = mem::take(buffer);
                     let part = AsyncMultipartUpload::upload_part(&config, buff, *part_number);
@@ -266,13 +293,8 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 }
                 //Poll all uploads, remove complete and fetch their results.
                 AsyncMultipartUpload::check_uploads(uploads, completed_parts, cx)?;
-                // If all uploads have completed trigger a wakeup,
-                // there are no Pending Futures that will trigger this.
-                if uploads.is_empty() {
-                    //Potential to short cut to `Completing` here
-                    //but a linear state flow is simpler to follow
-                    cx.waker().wake_by_ref();
-                }
+                // If no remaining uploads then trigger a wake to move to next state
+                uploads.is_empty().then(|| cx.waker().wake_by_ref());
                 // Change state to Completing parts
                 self.state = AsyncMultipartUploadState::CompletingParts {
                     uploads: mem::take(uploads),
@@ -291,8 +313,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 let completing =
                     AsyncMultipartUpload::complete_multipart_upload(&config, completed_parts);
                 self.state = AsyncMultipartUploadState::Completing(completing);
-                // The completing future has not been polled so
-                // a wakeup must be trigger.
+                // Trigger a wake to run with new state and poll the future
                 cx.waker().wake_by_ref();
                 Poll::Pending
             }
@@ -302,13 +323,8 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
             } => {
                 //Poll all uploads, remove complete and fetch their results.
                 AsyncMultipartUpload::check_uploads(uploads, completed_parts, cx)?;
-                // If all uploads have completed trigger a wakeup,
-                // there are no Pending Futures that will trigger this.
-                if uploads.is_empty() {
-                    //Potential to short cut to `Completing` here
-                    //but a linear state flow is simpler to follow
-                    cx.waker().wake_by_ref();
-                }
+                //Trigger a wake if all uploads have completed
+                uploads.is_empty().then(|| cx.waker().wake_by_ref());
                 Poll::Pending
             }
             AsyncMultipartUploadState::Completing(fut) => {
@@ -322,7 +338,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
             }
             AsyncMultipartUploadState::Closed => Poll::Ready(Err(Error::new(
                 ErrorKind::Other,
-                "Attempted to .flush() writer after .close().",
+                "Attempted to .close() writer after .close().",
             ))),
         }
     }
@@ -336,17 +352,34 @@ mod tests {
     async fn test_part_size_too_small() {
         let shared_config = aws_config::load_from_env().await;
         let client = aws_sdk_s3::Client::new(&shared_config);
-        assert!(AsyncMultipartUpload::new(&client, "bucket", "key", 0_usize)
-            .await
-            .is_err())
+        assert!(
+            AsyncMultipartUpload::new(&client, "bucket", "key", 0_usize, None)
+                .await
+                .is_err()
+        )
     }
 
     #[tokio::test]
     async fn test_part_size_too_big() {
         let shared_config = aws_config::load_from_env().await;
         let client = aws_sdk_s3::Client::new(&shared_config);
+        assert!(AsyncMultipartUpload::new(
+            &client,
+            "bucket",
+            "key",
+            5 * 1024_usize.pow(3) + 1,
+            None
+        )
+        .await
+        .is_err())
+    }
+
+    #[tokio::test]
+    async fn test_max_uploading_parts_is_zero() {
+        let shared_config = aws_config::load_from_env().await;
+        let client = aws_sdk_s3::Client::new(&shared_config);
         assert!(
-            AsyncMultipartUpload::new(&client, "bucket", "key", 5 * 1024_usize.pow(3) + 1)
+            AsyncMultipartUpload::new(&client, "bucket", "key", 5 * 1024_usize.pow(2), Some(0))
                 .await
                 .is_err()
         )

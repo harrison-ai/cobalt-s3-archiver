@@ -117,10 +117,15 @@ where
 
     println!("Creating zip file from dst_key {:?}", dst);
     //Create the upload and the zip writer.
-    let mut upload =
-        AsyncMultipartUpload::new(client, &dst.bucket, &dst.key, 5_usize * 1024_usize.pow(2))
-            .await?
-            .compat_write();
+    let mut upload = AsyncMultipartUpload::new(
+        client,
+        &dst.bucket,
+        &dst.key,
+        5_usize * 1024_usize.pow(2),
+        None,
+    )
+    .await?
+    .compat_write();
     let mut zip = async_zip::write::ZipFileWriter::new(&mut upload);
 
     //Copy each src object into the zip correcting the path based on the `prefix_strip`
