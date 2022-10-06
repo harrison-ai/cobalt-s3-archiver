@@ -1,5 +1,7 @@
 pub mod aws;
 
+use std::str::FromStr;
+
 use anyhow::{Context, Result};
 use async_zip::{write::EntryOptions, Compression as AsyncCompression};
 use aws::AsyncMultipartUpload;
@@ -59,6 +61,16 @@ impl TryFrom<String> for S3Object {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         value.parse::<Url>()?.try_into()
     }
+}
+
+impl FromStr for S3Object {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+       value.parse::<Url>()?.try_into() 
+    }
+
+
 }
 
 #[derive(Debug, Clone, ValueEnum, Copy, PartialEq, Eq)]
