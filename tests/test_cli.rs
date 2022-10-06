@@ -15,7 +15,6 @@ fn get_aws_env<T: Image>(container: &Option<Box<Container<T>>>) -> HashMap<Strin
         let port = cont.get_host_port_ipv4(4566);
         cmd_env.insert("EDGE_PORT".into(), port.to_string());
     }
-    //set_env_if_not_set("LOCALSTACK_HOSTNAME", common::aws::localstack_host());
     cmd_env.insert(
         "LOCALSTACK_HOSTNAME".into(),
         std::env::var("LOCALSTACK_HOSTNAME").unwrap_or_else(|_| common::aws::localstack_host()),
