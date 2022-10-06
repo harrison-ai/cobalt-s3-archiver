@@ -201,12 +201,10 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
 
                 //keep pushing uploads until the buffer is small than the part size
                 while buffer.len() >= config.part_size {
-                    // |---- buffer ----|--- part ------|
-                    //Part is initially bytes more than part size
                     let mut part = buffer.split_off(config.part_size);
-                    //We want to upload the first part_size bytes from the buffer
-                    //Swap part with buffer so part are now bytes to upload
-                    // |--- part ------|--buffer-|
+                    // We want to consume the first part of the buffer and upload it to S3.
+                    // The split_off call does this but it's the wrong way around.
+                    // Use `mem:swap` to reverse the two variables in place.
                     std::mem::swap(buffer, &mut part);
                     //Upload a new part
                     let part_upload =
