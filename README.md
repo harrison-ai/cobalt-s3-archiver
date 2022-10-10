@@ -25,7 +25,7 @@ OPTIONS:
 
 Each file will be `stored` in the ZIP with no compression unless a compression argument is provided. Supported compression includes deflate, bzip2, lzma, zstd and xz.  All input files will be compressed with the same compression.
 
-The path of each file in the ZIP will the be the key of the input object unless a `prefix_strip`argument is provided. If a `prefix_strip` argument is provided it's value is removed from the input object key before writing it into the zip e.g. `my/input/key.txt` with a `prefix_strip` argument of `my/` will be added to the ZIP as `input/key.txt`.  The `prefix_strip` must not start with `\` but must include a trailing `\`, this is explicitly validated rather than `magically` edited in the code.
+The path of each file in the ZIP will the be the key of the input object unless a `prefix_strip`argument is provided. If a `prefix_strip` argument is provided its value is removed from the input object key before writing it into the zip. For example `my/input/key.txt` with a `prefix_strip` argument of `my/` will be added to the zip as `input/key.txt`.  The `prefix_strip` must not start with `\` but must include a trailing `\`, this is explicitly validated rather than `magically` edited in the code.
 
 ## Limitations
 
