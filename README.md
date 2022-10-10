@@ -74,7 +74,7 @@ For each test a separate localstack instance is started listening on a separate 
 
 ## Building
 
-The project can be build and run using `cargo`.  To build the project use `cargo build`, to run the project `cargo run` and to install the project use `cargo install`.
+The project can be built and run using `cargo`.  To build the project use `cargo build`, to run the project `cargo run` and to install the project use `cargo install`.
 
 ## Development
 
