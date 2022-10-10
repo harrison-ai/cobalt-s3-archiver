@@ -29,7 +29,7 @@ The path of each file in the ZIP will the be the key of the input object unless 
 
 ## Limitations
 
-The [`async-zip`](https://github.com/Majored/rs-async-zip) crate does support ZIP64 which introduces the following limitations:
+The [`async-zip`](https://github.com/Majored/rs-async-zip) crate does not support ZIP64 which introduces the following limitations:
 
 * Number of files inside an Archive 65,535.
 * Size of a file in an Archive [bytes] 4,294,967,295.
