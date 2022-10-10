@@ -1625,6 +1625,7 @@ dependencies = [
  "crc",
  "function_name",
  "futures",
+ "pin-project-lite",
  "rand",
  "rand_chacha",
  "testcontainers",

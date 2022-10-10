@@ -1,8 +1,10 @@
 pub mod aws;
+pub mod counter;
 
 use std::str::FromStr;
 
-use anyhow::{Context, Result};
+use crate::counter::ByteLimit;
+use anyhow::{bail, ensure, Context, Result};
 use async_zip::{write::EntryOptions, Compression as AsyncCompression};
 use aws::AsyncMultipartUpload;
 use clap::ValueEnum;
@@ -35,13 +37,13 @@ impl TryFrom<url::Url> for S3Object {
 
     fn try_from(value: url::Url) -> Result<Self, Self::Error> {
         if value.scheme() != "s3" {
-            anyhow::bail!("S3 URL must have a scheme of s3")
+            bail!("S3 URL must have a scheme of s3")
         }
         let bucket = value.host_str().context("S3 URL must have host")?;
         let key = value.path();
 
         if key.is_empty() {
-            anyhow::bail!("S3 URL must have a path")
+            bail!("S3 URL must have a path")
         }
         Ok(S3Object::new(bucket, key))
     }
@@ -94,6 +96,10 @@ impl From<Compression> for AsyncCompression {
     }
 }
 
+const MAX_FILES_IN_ZIP: u16 = u16::MAX;
+const MAX_FILE_IN_ZIP_SIZE_BYTES: u32 = u32::MAX;
+const MAX_ZIP_FILE_SIZE_BYTES: u32 = u32::MAX;
+
 pub async fn create_zip<'a, I>(
     client: &aws_sdk_s3::Client,
     srcs: I,
@@ -105,35 +111,42 @@ where
     I: IntoIterator<Item = Result<S3Object>>,
 {
     //S3 keys can start with "/" but this is a little confusing
-    anyhow::ensure!(
+    ensure!(
         prefix_strip.filter(|s| s.starts_with('/')).is_none(),
         "prefix_strip must not start with `/`"
     );
     //Fail early to ensure that the dir structure in the Zip does not have '/' at the root.
-    anyhow::ensure!(
+    ensure!(
         prefix_strip.is_none() || prefix_strip.filter(|s| s.ends_with('/')).is_some(),
         "prefix_strip must end with `/`"
     );
 
     println!("Creating zip file from dst_key {:?}", dst);
     //Create the upload and the zip writer.
-    let mut upload = AsyncMultipartUpload::new(
+    let upload = AsyncMultipartUpload::new(
         client,
         &dst.bucket,
         &dst.key,
         5_usize * 1024_usize.pow(2),
         None,
     )
-    .await?
-    .compat_write();
-    let mut zip = async_zip::write::ZipFileWriter::new(&mut upload);
+    .await?;
+
+    let mut byte_limit =
+        ByteLimit::new_from_inner(upload, MAX_ZIP_FILE_SIZE_BYTES.into()).compat_write();
+    let mut zip = async_zip::write::ZipFileWriter::new(&mut byte_limit);
 
     //Copy each src object into the zip correcting the path based on the `prefix_strip`
-    for src in srcs {
+    for (src, i) in srcs.into_iter().zip(0_u32..) {
+        ensure!(
+            i <= MAX_FILES_IN_ZIP.into(),
+            "ZIP64 is not supported: Too many zip entries."
+        );
+
         let src = src?;
         // Entry_path is
         let entry_path = src.key.trim_start_matches(prefix_strip.unwrap_or_default());
-        anyhow::ensure!(
+        ensure!(
             !entry_path.is_empty(),
             "{} with out prefix {prefix_strip:?} is an invalid entry ",
             src.key
@@ -145,6 +158,8 @@ where
             .key(&src.key)
             .send()
             .await?;
+        ensure!(response.content_length() <= MAX_FILE_IN_ZIP_SIZE_BYTES.into(),
+            "ZIP64 is not supported: Max file size is {MAX_FILE_IN_ZIP_SIZE_BYTES}, {src:?} is {} bytes", response.content_length);
         let opts = EntryOptions::new(entry_path.to_owned(), compression.into());
         let mut entry_writer = zip.write_entry_stream(opts).await?;
         let mut read = StreamReader::new(response.body);
@@ -154,7 +169,7 @@ where
     }
     zip.close().await?;
     //The zip writer does not close the multipart upload
-    upload.shutdown().await?;
+    byte_limit.shutdown().await?;
     Ok(())
 }
 
