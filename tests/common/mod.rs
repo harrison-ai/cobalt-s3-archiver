@@ -182,11 +182,7 @@ pub mod fixtures {
             .into())
     }
 
-    pub async fn create_random_file(
-        client: &Client,
-        obj: &S3Object,
-        size: usize,
-    ) -> Result<()> {
+    pub async fn create_random_file(client: &Client, obj: &S3Object, size: usize) -> Result<()> {
         let data: Vec<_> = (0..size).map(|_| rand::random::<u8>()).collect();
         Ok(client
             .put_object()
@@ -216,8 +212,7 @@ pub mod fixtures {
         I: IntoIterator + 'a,
         I::Item: AsRef<str>,
     {
-        keys.into_iter()
-            .map(move |k| S3Object::new(bucket, k))
+        keys.into_iter().map(move |k| S3Object::new(bucket, k))
     }
 
     pub async fn validate_zip<'a, I>(
