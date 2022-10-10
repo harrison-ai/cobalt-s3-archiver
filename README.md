@@ -50,7 +50,9 @@ The testing of this binary operates in three modes, all of which use [localstack
 To run `cargo test` an instance of `localstack` must be running and listening on `127.0.0.1:4566`.  The test code will connect to `localhost:4566` (so `localhost` must resolve to your local machine).  Since the `localstack`
 instance is shared between all the tests they must be run in series using 
 
-```cargo test -- --test-threads=1```
+```bash
+cargo test -- --test-threads=1
+```
 
 to ensure that the tests do not share resources.
 

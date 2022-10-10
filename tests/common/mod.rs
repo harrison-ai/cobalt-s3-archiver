@@ -144,7 +144,7 @@ pub mod fixtures {
         Ok(())
     }
 
-    pub async fn check_object_exists(client: &Client, obj: &s3_archiver::S3Object) -> Result<bool> {
+    pub async fn check_object_exists(client: &Client, obj: &S3Object) -> Result<bool> {
         let result = client
             .head_object()
             .bucket(&obj.bucket)
@@ -166,7 +166,7 @@ pub mod fixtures {
         }
     }
 
-    pub async fn fetch_bytes(client: &Client, obj: &s3_archiver::S3Object) -> Result<Vec<u8>> {
+    pub async fn fetch_bytes(client: &Client, obj: &S3Object) -> Result<Vec<u8>> {
         Ok(client
             .get_object()
             .bucket(&obj.bucket)
@@ -184,7 +184,7 @@ pub mod fixtures {
 
     pub async fn create_random_file(
         client: &Client,
-        obj: &s3_archiver::S3Object,
+        obj: &S3Object,
         size: usize,
     ) -> Result<()> {
         let data: Vec<_> = (0..size).map(|_| rand::random::<u8>()).collect();
@@ -200,7 +200,7 @@ pub mod fixtures {
 
     pub async fn create_random_files<'a, I>(client: &Client, size: usize, keys: I) -> Result<()>
     where
-        I: IntoIterator<Item = &'a s3_archiver::S3Object> + 'a,
+        I: IntoIterator<Item = &'a S3Object> + 'a,
     {
         for obj in keys {
             create_random_file(client, obj, size).await?;
@@ -211,23 +211,23 @@ pub mod fixtures {
     pub fn s3_object_from_keys<'a, I>(
         bucket: &'a str,
         keys: I,
-    ) -> impl Iterator<Item = s3_archiver::S3Object> + 'a
+    ) -> impl Iterator<Item = S3Object> + 'a
     where
         I: IntoIterator + 'a,
         I::Item: AsRef<str>,
     {
         keys.into_iter()
-            .map(move |k| s3_archiver::S3Object::new(bucket, k))
+            .map(move |k| S3Object::new(bucket, k))
     }
 
     pub async fn validate_zip<'a, I>(
         client: &Client,
-        zip_obj: &s3_archiver::S3Object,
+        zip_obj: &S3Object,
         prefix_to_strip: Option<&'a str>,
         file_names: I,
     ) -> Result<()>
     where
-        I: IntoIterator<Item = &'a s3_archiver::S3Object> + 'a,
+        I: IntoIterator<Item = &'a S3Object> + 'a,
     {
         let bytes = fetch_bytes(client, zip_obj).await?;
 
@@ -236,10 +236,10 @@ pub mod fixtures {
         let zip = &mut ZipFileReader::new(&bytes).await?;
         let num_entries = zip.entries().len();
         for (index, src) in (0..num_entries).zip(file_names) {
-            let src_crc = object_cr32(client, src).await?;
+            let src_crc = object_crc32(client, src).await?;
             let entry_reader = zip.entry_reader(index).await?;
             let entry_name = entry_reader.entry().name().to_owned();
-            let dst_crc = zip_entry_cr32(entry_reader).await?;
+            let dst_crc = zip_entry_crc32(entry_reader).await?;
             assert_eq!(src_crc, dst_crc);
             assert_eq!(
                 entry_name,
@@ -250,11 +250,11 @@ pub mod fixtures {
         Ok(())
     }
 
-    pub async fn object_cr32(client: &Client, obj: &s3_archiver::S3Object) -> Result<u32> {
+    pub async fn object_crc32(client: &Client, obj: &S3Object) -> Result<u32> {
         Ok(CASTAGNOLI.checksum(&fetch_bytes(client, obj).await?))
     }
 
-    pub async fn zip_entry_cr32<R>(entry_reader: ZipEntryReader<'_, R>) -> Result<u32>
+    pub async fn zip_entry_crc32<R>(entry_reader: ZipEntryReader<'_, R>) -> Result<u32>
     where
         R: tokio::io::AsyncRead + core::marker::Unpin,
     {
