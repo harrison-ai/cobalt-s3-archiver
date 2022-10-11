@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use crate::counter::ByteLimit;
 use anyhow::{bail, ensure, Context, Result};
-use async_zip::{write::EntryOptions, Compression as AsyncCompression};
+use async_zip::{Compression as AsyncCompression, ZipEntryBuilder};
 use aws::AsyncMultipartUpload;
 use clap::ValueEnum;
 use tokio::io::AsyncWriteExt;
@@ -160,7 +160,7 @@ where
             .await?;
         ensure!(response.content_length() <= MAX_FILE_IN_ZIP_SIZE_BYTES.into(),
             "ZIP64 is not supported: Max file size is {MAX_FILE_IN_ZIP_SIZE_BYTES}, {src:?} is {} bytes", response.content_length);
-        let opts = EntryOptions::new(entry_path.to_owned(), compression.into());
+        let opts = ZipEntryBuilder::new(entry_path.to_owned(), compression.into());
         let mut entry_writer = zip.write_entry_stream(opts).await?;
         let mut read = StreamReader::new(response.body);
         let _ = tokio::io::copy(&mut read, &mut entry_writer).await?;
