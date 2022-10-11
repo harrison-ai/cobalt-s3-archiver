@@ -4,7 +4,7 @@ use aws_sdk_s3::model::CompletedPart;
 use aws_sdk_s3::model::ObjectCannedAcl;
 use aws_sdk_s3::output::{CompleteMultipartUploadOutput, UploadPartOutput};
 use aws_sdk_s3::types::{ByteStream, SdkError};
-use bytesize::{MIB, GIB};
+use bytesize::{GIB, MIB};
 use futures::future::BoxFuture;
 use futures::io::{Error, ErrorKind};
 use futures::task::{Context, Poll};
@@ -364,15 +364,11 @@ mod tests {
     async fn test_part_size_too_big() {
         let shared_config = aws_config::load_from_env().await;
         let client = aws_sdk_s3::Client::new(&shared_config);
-        assert!(AsyncMultipartUpload::new(
-            &client,
-            "bucket",
-            "key",
-            5 * GIB as usize + 1,
-            None
+        assert!(
+            AsyncMultipartUpload::new(&client, "bucket", "key", 5 * GIB as usize + 1, None)
+                .await
+                .is_err()
         )
-        .await
-        .is_err())
     }
 
     #[tokio::test]

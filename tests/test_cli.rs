@@ -1,8 +1,8 @@
 pub mod common;
 
-use bytesize::MIB;
 use ::function_name::named;
 use assert_cmd::Command;
+use bytesize::MIB;
 use common::aws::S3TestClient;
 use common::fixtures;
 use std::collections::HashMap;
