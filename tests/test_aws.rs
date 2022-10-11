@@ -3,13 +3,15 @@ pub mod common;
 use ::function_name::named;
 use common::aws::S3TestClient;
 use common::fixtures;
+#[cfg(feature = "test_containers")]
+use futures::lock::Mutex;
 use futures::prelude::*;
 #[cfg(feature = "test_containers")]
 use futures::stream;
 use s3_archiver::aws::AsyncMultipartUpload;
 use s3_archiver::S3Object;
 #[cfg(feature = "test_containers")]
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 #[tokio::test]
 #[named]
@@ -139,7 +141,7 @@ async fn test_fail_failed_write() {
 
     //Create a file big enough to upload a part
     let data = vec![0; part_len];
-    upload.lock().unwrap().write_all(&data).await.unwrap();
+    upload.lock().await.write_all(&data).await.unwrap();
     //Drop the container
     drop(container);
 
@@ -150,7 +152,7 @@ async fn test_fail_failed_write() {
         .then(|_| {
             let upload = upload.clone();
             let data = vec![0; 1024_usize.pow(2)];
-            async move { upload.lock().unwrap().write_all(&data).await }
+            async move { upload.lock().await.write_all(&data).await }
         })
         .map_ok(|_| ())
         .try_collect()
