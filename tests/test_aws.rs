@@ -13,6 +13,8 @@ use s3_archiver::S3Object;
 #[cfg(feature = "test_containers")]
 use std::sync::Arc;
 
+use bytesize::MIB;
+
 #[tokio::test]
 #[named]
 async fn test_put_single_part() {
@@ -23,17 +25,12 @@ async fn test_put_single_part() {
     let dst_key = fixtures::gen_random_file_name(&mut rng);
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
-    let buffer_len = 1024_usize.pow(2);
+    let buffer_len = MIB as usize;
 
-    let mut upload = AsyncMultipartUpload::new(
-        &client,
-        test_bucket,
-        &dst_key,
-        5_usize * 1024_usize.pow(2),
-        None,
-    )
-    .await
-    .unwrap();
+    let mut upload =
+        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5_usize * MIB as usize, None)
+            .await
+            .unwrap();
     upload.write_all(&vec![0; buffer_len]).await.unwrap();
     upload.close().await.unwrap();
     let body = fixtures::fetch_bytes(&client, &S3Object::new(test_bucket, &dst_key))
@@ -52,10 +49,10 @@ async fn test_put_10mb() {
     let dst_key = fixtures::gen_random_file_name(&mut rng);
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
-    let data_len = 10 * 1024_usize.pow(2);
+    let data_len = 10 * MIB as usize;
 
     let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * 1024_usize.pow(2), None)
+        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
             .await
             .unwrap();
     upload.write_all(&vec![0; data_len]).await.unwrap();
@@ -78,11 +75,11 @@ async fn test_put_14mb() {
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
     let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * 1024_usize.pow(2), None)
+        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
             .await
             .unwrap();
 
-    let data_len = 14 * 1024_usize.pow(2);
+    let data_len = 14 * MIB as usize;
 
     upload.write_all(&vec![0; data_len]).await.unwrap();
     upload.close().await.unwrap();
@@ -99,17 +96,12 @@ async fn test_put_16mb_single_upload() {
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
-    let mut upload = AsyncMultipartUpload::new(
-        &client,
-        test_bucket,
-        &dst_key,
-        5 * 1024_usize.pow(2),
-        Some(1),
-    )
-    .await
-    .unwrap();
+    let mut upload =
+        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, Some(1))
+            .await
+            .unwrap();
 
-    let data_len = 16 * 1024_usize.pow(2);
+    let data_len = 16 * MIB as usize;
 
     upload.write_all(&vec![0; data_len]).await.unwrap();
     upload.close().await.unwrap();
@@ -132,7 +124,7 @@ async fn test_fail_failed_write() {
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
-    let part_len = 5 * 1024_usize.pow(2);
+    let part_len = 5 * MIB as usize;
     let upload = Arc::new(Mutex::new(
         AsyncMultipartUpload::new(&client, test_bucket, &dst_key, part_len, None)
             .await
@@ -151,7 +143,7 @@ async fn test_fail_failed_write() {
     let result: Result<(), _> = stream::iter(0..500)
         .then(|_| {
             let upload = upload.clone();
-            let data = vec![0; 1024_usize.pow(2)];
+            let data = vec![0; MIB as usize];
             async move { upload.lock().await.write_all(&data).await }
         })
         .map_ok(|_| ())
@@ -174,11 +166,11 @@ async fn test_fail_write() {
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
     let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * 1024_usize.pow(2), None)
+        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
             .await
             .unwrap();
 
-    let data_len = 6 * 1024_usize.pow(2);
+    let data_len = 6 * MIB as usize;
 
     drop(container);
     upload.write_all(&vec![0; data_len]).await.unwrap();
@@ -198,11 +190,11 @@ async fn test_fail_close() {
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
     let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * 1024_usize.pow(2), None)
+        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
             .await
             .unwrap();
 
-    let data_len = 6 * 1024_usize.pow(2);
+    let data_len = 6 * MIB as usize;
 
     drop(container);
     upload.write_all(&vec![0; data_len]).await.unwrap();

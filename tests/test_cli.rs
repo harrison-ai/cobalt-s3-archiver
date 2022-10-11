@@ -1,5 +1,6 @@
 pub mod common;
 
+use bytesize::MIB;
 use ::function_name::named;
 use assert_cmd::Command;
 use common::aws::S3TestClient;
@@ -46,7 +47,7 @@ async fn test_cli_run() {
     let src_objs =
         fixtures::s3_object_from_keys(src_bucket, fixtures::gen_random_file_names(&mut rng, 2))
             .collect();
-    fixtures::create_src_files(&client, src_bucket, &src_objs, 1024_usize.pow(2))
+    fixtures::create_src_files(&client, src_bucket, &src_objs, MIB as usize)
         .await
         .unwrap();
 
@@ -87,7 +88,7 @@ async fn test_cli_run_with_size() {
     let src_objs =
         fixtures::s3_object_from_keys(src_bucket, fixtures::gen_random_file_names(&mut rng, 2))
             .collect();
-    fixtures::create_src_files(&client, src_bucket, &src_objs, 1024_usize.pow(2))
+    fixtures::create_src_files(&client, src_bucket, &src_objs, MIB as usize)
         .await
         .unwrap();
 
