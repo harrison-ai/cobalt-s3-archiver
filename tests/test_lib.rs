@@ -30,6 +30,7 @@ async fn test_put_get() {
         None,
         Compression::Stored,
         (5 * bytesize::MIB).try_into().unwrap(),
+        2,
         &dst,
     )
     .await

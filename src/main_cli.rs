@@ -25,6 +25,9 @@ struct Args {
     /// Min 5MiB, Max 5GiB.
     #[clap(short = 's', long = "part-size", default_value = "5MiB")]
     part_size: ByteSize,
+    /// How many src object requests to eagerly fetch.
+    #[clap(short = 'f', long = "src-fetch-concurrency", default_value_t = 2)]
+    src_fetch_concurrency: usize,
 }
 
 #[tokio::main]
@@ -53,6 +56,7 @@ async fn create_zip_from_read(
         args.prefix_strip.as_deref(),
         args.compression,
         usize::try_from(args.part_size.as_u64())?,
+        args.src_fetch_concurrency,
         &args.output_location.clone().try_into()?,
     )
     .await
