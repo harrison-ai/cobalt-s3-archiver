@@ -371,6 +371,7 @@ pub mod fixtures {
             args.src_objs().map(Ok),
             args.prefix_to_strip,
             args.compression,
+            (5 * bytesize::MIB).try_into()?,
             &args.dst_obj,
         )
         .await?;

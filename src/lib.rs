@@ -105,6 +105,7 @@ pub async fn create_zip<'a, I>(
     srcs: I,
     prefix_strip: Option<&'a str>,
     compression: Compression,
+    part_size: usize,
     dst: &S3Object,
 ) -> Result<()>
 where
@@ -123,14 +124,7 @@ where
 
     println!("Creating zip file from dst_key {:?}", dst);
     //Create the upload and the zip writer.
-    let upload = AsyncMultipartUpload::new(
-        client,
-        &dst.bucket,
-        &dst.key,
-        5_usize * 1024_usize.pow(2),
-        None,
-    )
-    .await?;
+    let upload = AsyncMultipartUpload::new(client, &dst.bucket, &dst.key, part_size, None).await?;
 
     let mut byte_limit =
         ByteLimit::new_from_inner(upload, MAX_ZIP_FILE_SIZE_BYTES.into()).compat_write();
