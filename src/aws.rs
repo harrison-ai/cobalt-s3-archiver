@@ -4,6 +4,7 @@ use aws_sdk_s3::model::CompletedPart;
 use aws_sdk_s3::model::ObjectCannedAcl;
 use aws_sdk_s3::output::{CompleteMultipartUploadOutput, UploadPartOutput};
 use aws_sdk_s3::types::{ByteStream, SdkError};
+use bytesize::{GIB, MIB};
 use futures::future::BoxFuture;
 use futures::io::{Error, ErrorKind};
 use futures::task::{Context, Poll};
@@ -56,8 +57,8 @@ pub struct AsyncMultipartUpload<'a> {
     state: AsyncMultipartUploadState<'a>,
 }
 
-const MIN_PART_SIZE: usize = 5_usize * 1024_usize.pow(2); // 5 Mib
-const MAX_PART_SIZE: usize = 5_usize * 1024_usize.pow(3); // 5 Gib
+const MIN_PART_SIZE: usize = 5_usize * MIB as usize; // 5 Mib
+const MAX_PART_SIZE: usize = 5_usize * GIB as usize; // 5 Gib
 
 const DEFAULT_MAX_UPLOADING_PARTS: usize = 100;
 
@@ -363,15 +364,11 @@ mod tests {
     async fn test_part_size_too_big() {
         let shared_config = aws_config::load_from_env().await;
         let client = aws_sdk_s3::Client::new(&shared_config);
-        assert!(AsyncMultipartUpload::new(
-            &client,
-            "bucket",
-            "key",
-            5 * 1024_usize.pow(3) + 1,
-            None
+        assert!(
+            AsyncMultipartUpload::new(&client, "bucket", "key", 5 * GIB as usize + 1, None)
+                .await
+                .is_err()
         )
-        .await
-        .is_err())
     }
 
     #[tokio::test]
@@ -379,7 +376,7 @@ mod tests {
         let shared_config = aws_config::load_from_env().await;
         let client = aws_sdk_s3::Client::new(&shared_config);
         assert!(
-            AsyncMultipartUpload::new(&client, "bucket", "key", 5 * 1024_usize.pow(2), Some(0))
+            AsyncMultipartUpload::new(&client, "bucket", "key", 5 * MIB as usize, Some(0))
                 .await
                 .is_err()
         )

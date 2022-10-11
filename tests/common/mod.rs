@@ -128,6 +128,7 @@ pub mod fixtures {
     use aws_sdk_s3::types::ByteStream;
     use aws_sdk_s3::types::SdkError;
     use aws_sdk_s3::Client;
+    use bytesize::MIB;
     use crc::{Crc, CRC_32_ISCSI};
     use rand::distributions::{Alphanumeric, DistString};
     use rand::Rng;
@@ -307,7 +308,7 @@ pub mod fixtures {
                 None => gen_random_file_names(rng, src_file_count),
             };
             //gen_random_file_names(rng, src_file_count);
-            let file_size = 1024_usize.pow(2);
+            let file_size = MIB as usize;
             let compression = Compression::Stored;
             CheckZipArgs::new(
                 dst_obj,
@@ -329,7 +330,7 @@ pub mod fixtures {
                 .into_iter()
                 .map(String::from)
                 .collect();
-            let file_size = 1024_usize.pow(2);
+            let file_size = MIB as usize;
             let compression = Compression::Stored;
 
             CheckZipArgs::new(
@@ -371,6 +372,7 @@ pub mod fixtures {
             args.src_objs().map(Ok),
             args.prefix_to_strip,
             args.compression,
+            (5 * bytesize::MIB).try_into()?,
             &args.dst_obj,
         )
         .await?;

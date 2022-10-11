@@ -29,6 +29,7 @@ async fn test_put_get() {
         vec![Ok(src)].into_iter(),
         None,
         Compression::Stored,
+        (5 * bytesize::MIB).try_into().unwrap(),
         &dst,
     )
     .await

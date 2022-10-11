@@ -1,5 +1,6 @@
 use anyhow::Result;
 use aws_sdk_s3::Client;
+use bytesize::ByteSize;
 use clap::Parser;
 use cobalt_aws::config;
 use s3_archiver::{Compression, S3Object};
@@ -17,8 +18,13 @@ struct Args {
     )]
     compression: Compression,
     /// Prefix to remove from input keys
-    #[clap(short = 'p')]
+    #[clap(short = 'p', long = "prefix-strip")]
     prefix_strip: Option<String>,
+    /// Part size to use in multipart upload.
+    /// Accepts human readable bytes e.g. K, KiB.
+    /// Min 5MiB, Max 5GiB.
+    #[clap(short = 's', long = "part-size", default_value = "5MiB")]
+    part_size: ByteSize,
 }
 
 #[tokio::main]
@@ -46,6 +52,7 @@ async fn create_zip_from_read(
         objects,
         args.prefix_strip.as_deref(),
         args.compression,
+        usize::try_from(args.part_size.as_u64())?,
         &args.output_location.clone().try_into()?,
     )
     .await
