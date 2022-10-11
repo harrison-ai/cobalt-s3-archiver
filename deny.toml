@@ -9,7 +9,10 @@ notice = "warn"
 ignore = [
     # Like this:
     #"RUSTSEC-YYYY-NNNN",
-    "RUSTSEC-2020-0071"
+    "RUSTSEC-2020-0071",
+    #Until cobalt-aws upgrades to
+    # tracing-subscriber = "0.3.16"
+    "RUSTSEC-2021-0139"
 ]
 
 [licenses]
