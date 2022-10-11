@@ -1,0 +1,32 @@
+name: Run all the tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Cache Rust build artifacts
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/advisory-dbs/
+            ./target/
+          key: cargo-build-debug-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: |
+            cargo-build-debug-
+
+      - name: Check formatting and other validation
+        run: make validate
+
+      - name: Run the test suite
+        run: make test
