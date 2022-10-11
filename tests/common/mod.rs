@@ -233,7 +233,7 @@ pub mod fixtures {
         for (index, src) in (0..num_entries).zip(file_names) {
             let src_crc = object_crc32(client, src).await?;
             let entry_reader = zip.entry_reader(index).await?;
-            let entry_name = entry_reader.entry().name().to_owned();
+            let entry_name = entry_reader.entry().filename().to_owned();
             let dst_crc = zip_entry_crc32(entry_reader).await?;
             assert_eq!(src_crc, dst_crc);
             assert_eq!(
