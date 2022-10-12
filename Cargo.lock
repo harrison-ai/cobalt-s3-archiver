@@ -1787,6 +1787,8 @@ dependencies = [
  "pin-project-lite",
  "rand",
  "rand_chacha",
+ "serde",
+ "serde_json",
  "testcontainers",
  "tokio",
  "tokio-util",
