@@ -2,14 +2,12 @@ pub mod aws;
 pub mod counter;
 
 use std::str::FromStr;
-use std::sync::Arc;
 
 use crate::counter::ByteLimit;
 use anyhow::{bail, ensure, Context, Result};
 use async_zip::{Compression as AsyncCompression, ZipEntryBuilder};
 use aws::AsyncMultipartUpload;
 use clap::ValueEnum;
-use futures::lock::Mutex;
 use futures::prelude::*;
 use futures::stream;
 use tokio::io::AsyncWriteExt;
@@ -133,9 +131,7 @@ where
 
     let mut byte_limit =
         ByteLimit::new_from_inner(upload, MAX_ZIP_FILE_SIZE_BYTES.into()).compat_write();
-    let zip = Arc::new(Mutex::new(async_zip::write::ZipFileWriter::new(
-        &mut byte_limit,
-    )));
+    let mut zip = async_zip::write::ZipFileWriter::new(&mut byte_limit);
 
     stream::iter(srcs.into_iter().zip(0_u32..)).map(|(src, i)|{
         ensure!(
@@ -161,26 +157,21 @@ where
             .map_err(anyhow::Error::from)
     })
     .try_buffered(src_fetch_buffer)
-    .try_for_each(|(response, src, entry_path)|{
-        let zip = zip.clone();
+    .try_fold(&mut zip, | zip, (response, src, entry_path)|{
         async move {
             ensure!(response.content_length() <= MAX_FILE_IN_ZIP_SIZE_BYTES.into(),
                 "ZIP64 is not supported: Max file size is {MAX_FILE_IN_ZIP_SIZE_BYTES}, {src:?} is {} bytes", response.content_length);
             let opts = ZipEntryBuilder::new(entry_path.to_owned(), compression.into());
-            let mut zip = zip.lock().await;
             let mut entry_writer = zip.write_entry_stream(opts).await?;
             let mut read = StreamReader::new(response.body);
             let _ = tokio::io::copy(&mut read, &mut entry_writer).await?;
             // If this is not done the Zip file produced silently corrupts
             entry_writer.close().await?;
-            Ok(())
+            Ok(zip)
         }}).await?;
 
-    //Unwrap like it's your birthday.
-    let zip = Arc::try_unwrap(zip)
-        .map_err(|_| anyhow::Error::msg("Failed to unwrap the ZipFileWriter Arc"))?;
-    zip.into_inner().close().await?;
-    //The zip writer does not close the multipart upload
+    zip.close().await?;
+    ////The zip writer does not close the multipart upload
     byte_limit.shutdown().await?;
     Ok(())
 }
