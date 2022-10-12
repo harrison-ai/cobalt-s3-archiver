@@ -655,31 +655,14 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.2.22"
+version = "4.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86447ad904c7fb335a790c9d7fe3d0d971dc523b8ccd1561a520de9a85302750"
+checksum = "69d64e88428747154bd8bc378d178377ef4dace7a5735ca1f3855be72f2c2cb5"
 dependencies = [
  "atty",
  "bitflags",
- "clap_derive 3.2.18",
- "clap_lex 0.2.4",
- "indexmap",
- "once_cell",
- "strsim",
- "termcolor",
- "textwrap",
-]
-
-[[package]]
-name = "clap"
-version = "4.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "385007cbbed899260395a4107435fead4cad80684461b3cc78238bdcb0bad58f"
-dependencies = [
- "atty",
- "bitflags",
- "clap_derive 4.0.10",
- "clap_lex 0.3.0",
+ "clap_derive",
+ "clap_lex",
  "once_cell",
  "strsim",
  "termcolor",
@@ -687,37 +670,15 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "3.2.18"
+version = "4.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea0c8bce528c4be4da13ea6fead8965e95b6073585a2f05204bd8f4119f82a65"
+checksum = "c42f169caba89a7d512b5418b09864543eeb4d497416c917d7137863bd2076ad"
 dependencies = [
  "heck",
  "proc-macro-error",
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "clap_derive"
-version = "4.0.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db342ce9fda24fb191e2ed4e102055a4d381c1086a06630174cd8da8d5d917ce"
-dependencies = [
- "heck",
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "clap_lex"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2850f2f5a82cbf437dd5af4d49848fbdfc27c157c3d010345776f952765261c5"
-dependencies = [
- "os_str_bytes",
 ]
 
 [[package]]
@@ -744,7 +705,7 @@ dependencies = [
  "aws-smithy-http",
  "aws-types",
  "aws_lambda_events",
- "clap 4.0.12",
+ "clap",
  "futures",
  "http",
  "lambda_runtime",
@@ -1818,7 +1779,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-s3",
  "bytesize",
- "clap 3.2.22",
+ "clap",
  "cobalt-aws",
  "crc",
  "function_name",
@@ -2084,12 +2045,6 @@ dependencies = [
  "serde_json",
  "sha2",
 ]
-
-[[package]]
-name = "textwrap"
-version = "0.15.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "949517c0cf1bf4ee812e2e07e08ab448e3ae0d23472aee8a06c985f0c8815b16"
 
 [[package]]
 name = "thiserror"
