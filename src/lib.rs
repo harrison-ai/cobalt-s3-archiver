@@ -8,6 +8,8 @@ use anyhow::{bail, ensure, Context, Result};
 use async_zip::{Compression as AsyncCompression, ZipEntryBuilder};
 use aws::AsyncMultipartUpload;
 use clap::ValueEnum;
+use futures::prelude::*;
+use futures::stream;
 use tokio::io::AsyncWriteExt;
 use tokio_util::compat::FuturesAsyncWriteCompatExt;
 use tokio_util::io::StreamReader;
@@ -106,6 +108,7 @@ pub async fn create_zip<'a, I>(
     prefix_strip: Option<&'a str>,
     compression: Compression,
     part_size: usize,
+    src_fetch_buffer: usize,
     dst: &S3Object,
 ) -> Result<()>
 where
@@ -130,39 +133,45 @@ where
         ByteLimit::new_from_inner(upload, MAX_ZIP_FILE_SIZE_BYTES.into()).compat_write();
     let mut zip = async_zip::write::ZipFileWriter::new(&mut byte_limit);
 
-    //Copy each src object into the zip correcting the path based on the `prefix_strip`
-    for (src, i) in srcs.into_iter().zip(0_u32..) {
+    stream::iter(srcs.into_iter().zip(0_u32..)).map(|(src, i)|{
         ensure!(
             i <= MAX_FILES_IN_ZIP.into(),
             "ZIP64 is not supported: Too many zip entries."
         );
-
         let src = src?;
         // Entry_path is
-        let entry_path = src.key.trim_start_matches(prefix_strip.unwrap_or_default());
+        let entry_path = src.key.trim_start_matches(prefix_strip.unwrap_or_default()).to_owned();
         ensure!(
             !entry_path.is_empty(),
             "{} with out prefix {prefix_strip:?} is an invalid entry ",
             src.key
         );
-        println!("Adding file with {entry_path} from src_key {}", src.key);
-        let response = client
+       Ok((src, entry_path))
+    }).map_ok(move |(src, entry_path)|{
+        client
             .get_object()
             .bucket(&src.bucket)
             .key(&src.key)
             .send()
-            .await?;
-        ensure!(response.content_length() <= MAX_FILE_IN_ZIP_SIZE_BYTES.into(),
-            "ZIP64 is not supported: Max file size is {MAX_FILE_IN_ZIP_SIZE_BYTES}, {src:?} is {} bytes", response.content_length);
-        let opts = ZipEntryBuilder::new(entry_path.to_owned(), compression.into());
-        let mut entry_writer = zip.write_entry_stream(opts).await?;
-        let mut read = StreamReader::new(response.body);
-        let _ = tokio::io::copy(&mut read, &mut entry_writer).await?;
-        // If this is not done the Zip file produced sitently corrupts
-        entry_writer.close().await?;
-    }
+            .map_ok(|r|(r, src, entry_path))
+            .map_err(anyhow::Error::from)
+    })
+    .try_buffered(src_fetch_buffer)
+    .try_fold(&mut zip, | zip, (response, src, entry_path)|{
+        async move {
+            ensure!(response.content_length() <= MAX_FILE_IN_ZIP_SIZE_BYTES.into(),
+                "ZIP64 is not supported: Max file size is {MAX_FILE_IN_ZIP_SIZE_BYTES}, {src:?} is {} bytes", response.content_length);
+            let opts = ZipEntryBuilder::new(entry_path.to_owned(), compression.into());
+            let mut entry_writer = zip.write_entry_stream(opts).await?;
+            let mut read = StreamReader::new(response.body);
+            let _ = tokio::io::copy(&mut read, &mut entry_writer).await?;
+            // If this is not done the Zip file produced silently corrupts
+            entry_writer.close().await?;
+            Ok(zip)
+        }}).await?;
+
     zip.close().await?;
-    //The zip writer does not close the multipart upload
+    ////The zip writer does not close the multipart upload
     byte_limit.shutdown().await?;
     Ok(())
 }
