@@ -2,18 +2,21 @@ pub mod aws;
 pub mod counter;
 
 use std::str::FromStr;
+use std::sync::Arc;
 
 use crate::counter::ByteLimit;
 use anyhow::{bail, ensure, Context, Result};
 use async_zip::{Compression as AsyncCompression, ZipEntryBuilder};
 use aws::AsyncMultipartUpload;
+use aws_sdk_s3::output::GetObjectOutput;
 use clap::ValueEnum;
+use futures::lock::Mutex;
 use futures::prelude::*;
 use futures::stream;
+use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tokio_util::compat::FuturesAsyncWriteCompatExt;
 use url::Url;
-use serde::{Serialize, Deserialize};
 
 /// A bucket key pair for a S3Object
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -105,18 +108,50 @@ const MAX_ZIP_FILE_SIZE_BYTES: u32 = u32::MAX;
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ManifestEntry {
     object: S3Object,
-    crc32: u32
+    filename_in_zip: String,
+    crc32: u32,
 }
 
 impl ManifestEntry {
-
-    pub fn new(object: S3Object, crc32: u32) -> Self {
-        ManifestEntry{
-            object,
-            crc32
+    pub fn new(object: &S3Object, crc32: u32, filename_in_zip: &str) -> Self {
+        ManifestEntry {
+            object: object.clone(),
+            crc32,
+            filename_in_zip: filename_in_zip.to_owned(),
         }
     }
 }
+
+pub struct ManifestFileUpload<'a> {
+    buffer: cobalt_aws::s3::AsyncPutObject<'a>,
+}
+
+impl<'a> ManifestFileUpload<'a> {
+    pub fn new(client: &'a aws_sdk_s3::Client, dst: &S3Object) -> ManifestFileUpload<'a> {
+        let manifest_upload = cobalt_aws::s3::AsyncPutObject::new(
+            client,
+            &dst.bucket,
+            &(dst.key.to_owned() + ".manifest.jsonl"),
+        );
+        ManifestFileUpload {
+            buffer: manifest_upload,
+        }
+    }
+
+    pub async fn write_manifest_entry(&mut self, entry: &ManifestEntry) -> Result<()> {
+        let manifest_entry = serde_json::to_string(&entry)? + "\n";
+        self.buffer
+            .write_all(manifest_entry.as_bytes())
+            .await
+            .map_err(anyhow::Error::from)
+    }
+
+    pub async fn upload_object(&mut self) -> Result<()> {
+        self.buffer.close().await.map_err(anyhow::Error::from)
+    }
+}
+
+const CRC32: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_ISCSI);
 
 pub async fn create_zip<'a, I>(
     client: &aws_sdk_s3::Client,
@@ -144,70 +179,112 @@ where
     println!("Creating zip file from dst_key {:?}", dst);
     //Create the upload and the zip writer.
     let upload = AsyncMultipartUpload::new(client, &dst.bucket, &dst.key, part_size, None).await?;
-    //TODO: Pass in manifest S3Object in an optional.
-    let mut manifest_upload = cobalt_aws::s3::AsyncPutObject::new(client, &dst.bucket, &(dst.key.to_owned() + ".manifest.jsonl"));
 
     let mut byte_limit =
         ByteLimit::new_from_inner(upload, MAX_ZIP_FILE_SIZE_BYTES.into()).compat_write();
-    let mut zip = async_zip::write::ZipFileWriter::new(&mut byte_limit);
+    let zip = async_zip::write::ZipFileWriter::new(&mut byte_limit);
+    let zip = Arc::new(Mutex::new(zip));
 
-
-    stream::iter(srcs.into_iter().zip(0_u32..)).map(|(src, i)|{
-        ensure!(
-            i <= MAX_FILES_IN_ZIP.into(),
-            "ZIP64 is not supported: Too many zip entries."
-        );
-        let src = src?;
-        // Entry_path is
-        let entry_path = src.key.trim_start_matches(prefix_strip.unwrap_or_default()).to_owned();
-        ensure!(
-            !entry_path.is_empty(),
-            "{} with out prefix {prefix_strip:?} is an invalid entry ",
-            src.key
-        );
-       Ok((src, entry_path))
-    }).map_ok(move |(src, entry_path)|{
-        client
-            .get_object()
-            .bucket(&src.bucket)
-            .key(&src.key)
-            .send()
-            .map_ok(|r|(r, src, entry_path))
-            .map_err(anyhow::Error::from)
-    })
-    .try_buffered(src_fetch_buffer)
-    .try_fold((&mut zip, &mut manifest_upload), | (zip, manifest_upload), (mut response, src, entry_path)|{
-        async move {
-            ensure!(response.content_length() <= MAX_FILE_IN_ZIP_SIZE_BYTES.into(),
-                "ZIP64 is not supported: Max file size is {MAX_FILE_IN_ZIP_SIZE_BYTES}, {src:?} is {} bytes", response.content_length);
-            let opts = ZipEntryBuilder::new(entry_path.to_owned(), compression.into());
-            let entry_writer = zip.write_entry_stream(opts).await?;
-            use tokio_util::compat::TokioAsyncWriteCompatExt;
-            // Use a sink here in order to fan out
-            let mut writer_sink = TokioAsyncWriteCompatExt::compat_write(entry_writer).into_sink();
-
-            //It was hard to get this into the Sink because of the lifetimes
-            let crc32 = crc::Crc::<u32>::new(&crc::CRC_32_ISCSI);
-            let mut crc_sink = crate::counter::CRC32Sink::new(&crc32);
-
-            while let Some(data) = response.body.try_next().await? {
-                writer_sink.send(data.clone()).await?;
-                crc_sink.send(data.clone()).await?;
+    let zip_stream = stream::iter(srcs.into_iter().zip(0_u32..))
+        .map(|(src, i)| {
+            ensure!(
+                i <= MAX_FILES_IN_ZIP.into(),
+                "ZIP64 is not supported: Too many zip entries."
+            );
+            let src = src?;
+            // Entry_path is
+            let entry_path = src
+                .key
+                .trim_start_matches(prefix_strip.unwrap_or_default())
+                .to_owned();
+            ensure!(
+                !entry_path.is_empty(),
+                "{} with out prefix {prefix_strip:?} is an invalid entry ",
+                src.key
+            );
+            Ok((src, entry_path))
+        })
+        .map_ok(move |(src, entry_path)| {
+            client
+                .get_object()
+                .bucket(&src.bucket)
+                .key(&src.key)
+                .send()
+                .map_ok(|r| (r, src, entry_path))
+                .map_err(anyhow::Error::from)
+        })
+        .try_buffered(src_fetch_buffer)
+        .and_then(|(response, src, entry_path)| {
+            let zip = zip.clone();
+            async move {
+                let crc32 = process_entry(
+                    &mut *zip.lock().await,
+                    response,
+                    &src,
+                    &entry_path,
+                    compression,
+                )
+                .await?;
+                Ok::<_, anyhow::Error>((crc32, src, entry_path))
             }
-            // If this is not done the Zip file produced silently corrupts
-            writer_sink.close().await?;
-            crc_sink.close().await?;
-            let manifest_entry = ManifestEntry::new(src, crc_sink.value().context("Expected a CRC32")?);
-            let manifest_entry = serde_json::to_string(&manifest_entry)? + "\n";
-            manifest_upload.write_all(manifest_entry.as_bytes()).await?;
-            Ok((zip, manifest_upload))
-        }}).await?;
+        });
 
+    //If manifests are needed fold a upload over the stream
+    //Add a Option<S3Object> as manifest dest to args
+    if false {
+        let mut manifest_upload = ManifestFileUpload::new(client, dst);
+        zip_stream
+            .try_fold(
+                &mut manifest_upload,
+                |manifest_upload, (crc32, src, entry_path)| async move {
+                    manifest_upload
+                        .write_manifest_entry(&ManifestEntry::new(&src, crc32, &entry_path))
+                        .await?;
+                    Ok(manifest_upload)
+                },
+            )
+            .await?;
+        manifest_upload.upload_object().await?;
+    } else {
+        zip_stream.map_ok(|_| ()).try_collect().await?;
+    }
+
+    let zip =
+        Arc::try_unwrap(zip).map_err(|_| anyhow::Error::msg("Failed to unwrap ZipFileWriter"))?;
+    let zip = zip.into_inner();
     zip.close().await?;
     ////The zip writer does not close the multipart upload
     byte_limit.shutdown().await?;
-    manifest_upload.close().await?;
     Ok(())
+}
+
+async fn process_entry<T: tokio::io::AsyncWrite + Unpin>(
+    zip: &mut async_zip::write::ZipFileWriter<T>,
+    mut response: GetObjectOutput,
+    src: &S3Object,
+    entry_path: &str,
+    compression: Compression,
+) -> Result<u32> {
+    ensure!(response.content_length() <= MAX_FILE_IN_ZIP_SIZE_BYTES.into(),
+                "ZIP64 is not supported: Max file size is {MAX_FILE_IN_ZIP_SIZE_BYTES}, {src:?} is {} bytes", response.content_length);
+    let opts = ZipEntryBuilder::new(entry_path.to_owned(), compression.into());
+    let mut entry_writer = zip.write_entry_stream(opts).await?;
+
+    //crc is needed for validation
+    let mut crc_sink = crate::counter::CRC32Sink::new(&CRC32);
+
+    while let Some(bytes) = response.body.next().await {
+        let bytes = bytes?;
+        entry_writer.write_all(&bytes).await?;
+        crc_sink.send(bytes).await?;
+    }
+    // If this is not done the Zip file produced silently corrupts
+    entry_writer.close().await?;
+    crc_sink.close().await?;
+    let crc = crc_sink
+        .value()
+        .context("Expected CRC Sink to have value")?;
+    Ok(crc)
 }
 
 #[cfg(test)]

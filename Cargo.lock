@@ -1778,6 +1778,7 @@ dependencies = [
  "async_zip",
  "aws-config",
  "aws-sdk-s3",
+ "bytes",
  "bytesize",
  "clap",
  "cobalt-aws",
