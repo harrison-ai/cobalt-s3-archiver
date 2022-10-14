@@ -24,18 +24,13 @@ async fn test_put_get() {
         .unwrap();
 
     let dst: S3Object = S3Object::new(test_bucket, dst_key);
-    s3_archiver::create_zip(
-        &s3_client,
-        vec![Ok(src)].into_iter(),
-        None,
-        Compression::Stored,
-        (5 * bytesize::MIB).try_into().unwrap(),
-        2,
-        &dst,
-        None
-    )
-    .await
-    .expect("Expected zip creation");
+    let archiver = s3_archiver::Archiver::builder()
+        .compression(Compression::Stored)
+        .build();
+    archiver
+        .create_zip(&s3_client, vec![Ok(src)].into_iter(), &dst, None)
+        .await
+        .expect("Expected zip creation");
 
     assert!(fixtures::check_object_exists(&s3_client, &dst)
         .await

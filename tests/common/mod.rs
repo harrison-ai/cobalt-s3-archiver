@@ -367,17 +367,13 @@ pub mod fixtures {
         )
         .await?;
         create_bucket(client, &args.dst_obj.bucket).await?;
-        s3_archiver::create_zip(
-            client,
-            args.src_objs().map(Ok),
-            args.prefix_to_strip,
-            args.compression,
-            (5 * bytesize::MIB).try_into()?,
-            2,
-            &args.dst_obj,
-            None,
-        )
-        .await?;
+        let archiver = s3_archiver::Archiver::builder()
+            .prefix_strip(args.prefix_to_strip)
+            .compression(args.compression)
+            .build();
+        archiver
+            .create_zip(client, args.src_objs().map(Ok), &args.dst_obj, None)
+            .await?;
 
         let files_to_validate: Vec<_> = args.src_objs().collect();
         validate_zip(

@@ -1,4 +1,4 @@
-use anyhow::{Result, ensure};
+use anyhow::{ensure, Result};
 use aws_sdk_s3::Client;
 use bytesize::ByteSize;
 use clap::Parser;
@@ -48,26 +48,34 @@ async fn create_zip_from_read(
     input: &mut impl BufRead,
     args: &Args,
 ) -> Result<()> {
-    
-    ensure!(args.manifest_object.as_ref().filter(|o| *o == &args.output_location).is_none(), 
-            "output_location and manifest_object must not be the same");
+    ensure!(
+        args.manifest_object
+            .as_ref()
+            .filter(|o| *o == &args.output_location)
+            .is_none(),
+        "output_location and manifest_object must not be the same"
+    );
 
     let objects = input
         .lines()
         .map(|x| x.map_err(anyhow::Error::from))
         .map(|x| x.and_then(S3Object::try_from));
 
-    s3_archiver::create_zip(
-        client,
-        objects,
-        args.prefix_strip.as_deref(),
-        args.compression,
-        usize::try_from(args.part_size.as_u64())?,
-        args.src_fetch_concurrency,
-        &args.output_location.clone().try_into()?,
-        args.manifest_object.clone()
-    )
-    .await
+    let archiver = s3_archiver::Archiver::builder()
+        .prefix_strip(args.prefix_strip.as_deref())
+        .compression(args.compression)
+        .part_size(usize::try_from(args.part_size.as_u64())?)
+        .src_fetch_buffer(args.src_fetch_concurrency)
+        .build();
+
+    archiver
+        .create_zip(
+            client,
+            objects,
+            &args.output_location,
+            args.manifest_object.clone(),
+        )
+        .await
 }
 
 #[cfg(test)]

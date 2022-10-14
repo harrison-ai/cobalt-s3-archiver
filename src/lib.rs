@@ -18,6 +18,7 @@ use futures::stream;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tokio_util::compat::FuturesAsyncWriteCompatExt;
+use typed_builder::TypedBuilder;
 use url::Url;
 
 /// A bucket key pair for a S3Object
@@ -155,40 +156,56 @@ impl<'a> ManifestFileUpload<'a> {
 
 const CRC32: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_ISCSI);
 
-pub async fn create_zip<'a, I>(
-    client: &aws_sdk_s3::Client,
-    srcs: I,
+#[derive(Debug, TypedBuilder)]
+pub struct Archiver<'a> {
+    #[builder(default)]
     prefix_strip: Option<&'a str>,
     compression: Compression,
+    #[builder(default=5 * bytesize::MIB as usize)]
     part_size: usize,
+    #[builder(default = 2)]
     src_fetch_buffer: usize,
-    dst: &S3Object,
-    manifest_object: Option<S3Object>,
-) -> Result<()>
-where
-    I: IntoIterator<Item = Result<S3Object>>,
-{
-    //S3 keys can start with "/" but this is a little confusing
-    ensure!(
-        prefix_strip.filter(|s| s.starts_with('/')).is_none(),
-        "prefix_strip must not start with `/`"
-    );
-    //Fail early to ensure that the dir structure in the Zip does not have '/' at the root.
-    ensure!(
-        prefix_strip.is_none() || prefix_strip.filter(|s| s.ends_with('/')).is_some(),
-        "prefix_strip must end with `/`"
-    );
+}
 
-    println!("Creating zip file from dst_key {:?}", dst);
-    //Create the upload and the zip writer.
-    let upload = AsyncMultipartUpload::new(client, &dst.bucket, &dst.key, part_size, None).await?;
+impl<'a> Archiver<'a> {
+    pub async fn create_zip<'c, I>(
+        &self,
+        client: &aws_sdk_s3::Client,
+        srcs: I,
+        output_location: &S3Object,
+        manifest_object: Option<S3Object>,
+    ) -> Result<()>
+    where
+        I: IntoIterator<Item = Result<S3Object>>,
+    {
+        //S3 keys can start with "/" but this is a little confusing
+        ensure!(
+            self.prefix_strip.filter(|s| s.starts_with('/')).is_none(),
+            "prefix_strip must not start with `/`"
+        );
+        //Fail early to ensure that the dir structure in the Zip does not have '/' at the root.
+        ensure!(
+            self.prefix_strip.is_none() || self.prefix_strip.filter(|s| s.ends_with('/')).is_some(),
+            "prefix_strip must end with `/`"
+        );
 
-    let mut byte_limit =
-        ByteLimit::new_from_inner(upload, MAX_ZIP_FILE_SIZE_BYTES.into()).compat_write();
-    let zip = async_zip::write::ZipFileWriter::new(&mut byte_limit);
-    let zip = Arc::new(Mutex::new(zip));
+        println!("Creating zip file from dst_key {:?}", output_location);
+        //Create the upload and the zip writer.
+        let upload = AsyncMultipartUpload::new(
+            client,
+            &output_location.bucket,
+            &output_location.key,
+            self.part_size,
+            None,
+        )
+        .await?;
 
-    let zip_stream = stream::iter(srcs.into_iter().zip(1_u64..))
+        let mut byte_limit =
+            ByteLimit::new_from_inner(upload, MAX_ZIP_FILE_SIZE_BYTES.into()).compat_write();
+        let zip = async_zip::write::ZipFileWriter::new(&mut byte_limit);
+        let zip = Arc::new(Mutex::new(zip));
+
+        let zip_stream = stream::iter(srcs.into_iter().zip(1_u64..))
         .map(|(src, src_index)| src.map(|s| (s, src_index)))
         .and_then(
             |(src, src_index)| match src_index <= MAX_FILES_IN_ZIP.into() {
@@ -200,12 +217,12 @@ where
             // Entry_path is
             let entry_path = src
                 .key
-                .trim_start_matches(prefix_strip.unwrap_or_default())
+                .trim_start_matches(self.prefix_strip.unwrap_or_default())
                 .to_owned();
             match entry_path.is_empty() {
                 true => err(Error::msg(format!(
-                    "{} with out prefix {prefix_strip:?} is an invalid entry ",
-                    src.key
+                    "{} with out prefix {:?} is an invalid entry ",
+                    src.key, self.prefix_strip
                 ))),
                 false => ok((src, entry_path)),
             }
@@ -219,7 +236,7 @@ where
                 .map_ok(|r| (r, src, entry_path))
                 .map_err(anyhow::Error::from)
         })
-        .try_buffered(src_fetch_buffer) //This prefetches the S3 src objects
+        .try_buffered(self.src_fetch_buffer) //This prefetches the S3 src objects
         .and_then(|(response, src, entry_path)|{
             match response.content_length() > MAX_FILE_IN_ZIP_SIZE_BYTES.into() {
                 true => err(Error::msg(format!(
@@ -231,67 +248,67 @@ where
         .and_then(|(response, src, entry_path)| {
             let zip = zip.clone();
             async move {
-                process_entry(
+                self.process_entry(
                     &mut *zip.lock().await,
                     response,
                     &entry_path,
-                    compression,
                 ).map_ok(|crc32| ManifestEntry::new(&src, crc32, &entry_path))
                 .await
             }
         });
 
-    // If manifests are needed fold a upload over the stream
-    match manifest_object {
-        Some(object) => {
-            zip_stream
-                .try_fold(
-                    ManifestFileUpload::new(client, &object),
-                    |mut manifest_upload, entry| async move {
-                        manifest_upload.write_manifest_entry(&entry).await?;
-                        Ok(manifest_upload)
-                    },
-                )
-                .await?
-                .upload_object()
-                .await?
-        }
-        None => zip_stream.map_ok(|_| ()).try_collect().await?,
-    };
+        // If manifests are needed fold a upload over the stream
+        match manifest_object {
+            Some(object) => {
+                zip_stream
+                    .try_fold(
+                        ManifestFileUpload::new(client, &object),
+                        |mut manifest_upload, entry| async move {
+                            manifest_upload.write_manifest_entry(&entry).await?;
+                            Ok(manifest_upload)
+                        },
+                    )
+                    .await?
+                    .upload_object()
+                    .await?
+            }
+            None => zip_stream.map_ok(|_| ()).try_collect().await?,
+        };
 
-    let zip =
-        Arc::try_unwrap(zip).map_err(|_| anyhow::Error::msg("Failed to unwrap ZipFileWriter"))?;
-    let zip = zip.into_inner();
-    zip.close().await?;
-    //The zip writer does not close the multipart upload
-    byte_limit.shutdown().await?;
-    Ok(())
-}
-
-async fn process_entry<T: tokio::io::AsyncWrite + Unpin>(
-    zip: &mut async_zip::write::ZipFileWriter<T>,
-    mut response: GetObjectOutput,
-    entry_path: &str,
-    compression: Compression,
-) -> Result<u32> {
-    let opts = ZipEntryBuilder::new(entry_path.to_owned(), compression.into());
-    let mut entry_writer = zip.write_entry_stream(opts).await?;
-
-    //crc is needed for validation
-    let mut crc_sink = crate::counter::CRC32Sink::new(&CRC32);
-
-    while let Some(bytes) = response.body.next().await {
-        let bytes = bytes?;
-        entry_writer.write_all(&bytes).await?;
-        crc_sink.send(bytes).await?;
+        let zip = Arc::try_unwrap(zip)
+            .map_err(|_| anyhow::Error::msg("Failed to unwrap ZipFileWriter"))?;
+        let zip = zip.into_inner();
+        zip.close().await?;
+        //The zip writer does not close the multipart upload
+        byte_limit.shutdown().await?;
+        Ok(())
     }
-    // If this is not done the Zip file produced silently corrupts
-    entry_writer.close().await?;
-    crc_sink.close().await?;
-    let crc = crc_sink
-        .value()
-        .context("Expected CRC Sink to have value")?;
-    Ok(crc)
+
+    async fn process_entry<T: tokio::io::AsyncWrite + Unpin>(
+        &self,
+        zip: &mut async_zip::write::ZipFileWriter<T>,
+        mut response: GetObjectOutput,
+        entry_path: &str,
+    ) -> Result<u32> {
+        let opts = ZipEntryBuilder::new(entry_path.to_owned(), self.compression.into());
+        let mut entry_writer = zip.write_entry_stream(opts).await?;
+
+        //crc is needed for validation
+        let mut crc_sink = crate::counter::CRC32Sink::new(&CRC32);
+
+        while let Some(bytes) = response.body.next().await {
+            let bytes = bytes?;
+            entry_writer.write_all(&bytes).await?;
+            crc_sink.send(bytes).await?;
+        }
+        // If this is not done the Zip file produced silently corrupts
+        entry_writer.close().await?;
+        crc_sink.close().await?;
+        let crc = crc_sink
+            .value()
+            .context("Expected CRC Sink to have value")?;
+        Ok(crc)
+    }
 }
 
 #[cfg(test)]
