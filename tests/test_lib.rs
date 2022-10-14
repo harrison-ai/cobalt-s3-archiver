@@ -32,6 +32,7 @@ async fn test_put_get() {
         (5 * bytesize::MIB).try_into().unwrap(),
         2,
         &dst,
+        None
     )
     .await
     .expect("Expected zip creation");

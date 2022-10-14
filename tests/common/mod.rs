@@ -375,6 +375,7 @@ pub mod fixtures {
             (5 * bytesize::MIB).try_into()?,
             2,
             &args.dst_obj,
+            None,
         )
         .await?;
 

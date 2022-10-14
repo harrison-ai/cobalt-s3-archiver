@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use aws_sdk_s3::Client;
 use bytesize::ByteSize;
 use clap::Parser;
@@ -6,10 +6,10 @@ use cobalt_aws::config;
 use s3_archiver::{Compression, S3Object};
 use std::io::{BufRead, BufReader};
 
-#[derive(Parser)]
+#[derive(Parser, Debug, PartialEq, Eq)]
 struct Args {
     /// S3 output location `s3://{bucket}/{key}`
-    output_location: url::Url,
+    output_location: S3Object,
     #[clap(
         value_enum,
         default_value = "stored",
@@ -28,6 +28,9 @@ struct Args {
     /// How many src object requests to eagerly fetch.
     #[clap(short = 'f', long = "src-fetch-concurrency", default_value_t = 2)]
     src_fetch_concurrency: usize,
+
+    #[clap(short = 'm', long = "manifest_object")]
+    manifest_object: Option<S3Object>,
 }
 
 #[tokio::main]
@@ -45,6 +48,10 @@ async fn create_zip_from_read(
     input: &mut impl BufRead,
     args: &Args,
 ) -> Result<()> {
+    
+    ensure!(args.manifest_object.as_ref().filter(|o| *o == &args.output_location).is_none(), 
+            "output_location and manifest_object must not be the same");
+
     let objects = input
         .lines()
         .map(|x| x.map_err(anyhow::Error::from))
@@ -58,6 +65,7 @@ async fn create_zip_from_read(
         usize::try_from(args.part_size.as_u64())?,
         args.src_fetch_concurrency,
         &args.output_location.clone().try_into()?,
+        args.manifest_object.clone()
     )
     .await
 }

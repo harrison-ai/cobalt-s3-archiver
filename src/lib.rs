@@ -163,6 +163,7 @@ pub async fn create_zip<'a, I>(
     part_size: usize,
     src_fetch_buffer: usize,
     dst: &S3Object,
+    manifest_object: Option<S3Object>,
 ) -> Result<()>
 where
     I: IntoIterator<Item = Result<S3Object>>,
@@ -241,21 +242,22 @@ where
         });
 
     // If manifests are needed fold a upload over the stream
-    if false {
-        zip_stream
-            .try_fold(
-                ManifestFileUpload::new(client, dst),
-                |mut manifest_upload, entry| async move {
-                    manifest_upload.write_manifest_entry(&entry).await?;
-                    Ok(manifest_upload)
-                },
-            )
-            .await?
-            .upload_object()
-            .await?;
-    } else {
-        zip_stream.map_ok(|_| ()).try_collect().await?;
-    }
+    match manifest_object {
+        Some(object) => {
+            zip_stream
+                .try_fold(
+                    ManifestFileUpload::new(client, &object),
+                    |mut manifest_upload, entry| async move {
+                        manifest_upload.write_manifest_entry(&entry).await?;
+                        Ok(manifest_upload)
+                    },
+                )
+                .await?
+                .upload_object()
+                .await?
+        }
+        None => zip_stream.map_ok(|_| ()).try_collect().await?,
+    };
 
     let zip =
         Arc::try_unwrap(zip).map_err(|_| anyhow::Error::msg("Failed to unwrap ZipFileWriter"))?;
