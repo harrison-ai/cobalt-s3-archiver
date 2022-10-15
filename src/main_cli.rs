@@ -28,9 +28,16 @@ struct Args {
     /// How many src object requests to eagerly fetch.
     #[clap(short = 'f', long = "src-fetch-concurrency", default_value_t = 2)]
     src_fetch_concurrency: usize,
-
-    #[clap(short = 'm', long = "manifest_object")]
+    /// The location to write the manifest object. A list of src files and their crc32 values.
+    #[clap(short = 'm', long = "manifest-object")]
     manifest_object: Option<S3Object>,
+    /// Generate a manifest object at "{output_location}.manifest.jsonl"
+    #[clap(
+        short = 'g',
+        long = "generate-manifest-name",
+        conflicts_with = "manifest_object"
+    )]
+    auto_manifest: bool,
 }
 
 #[tokio::main]
@@ -68,12 +75,21 @@ async fn create_zip_from_read(
         .src_fetch_buffer(args.src_fetch_concurrency)
         .build();
 
+    let manifest_file = if args.auto_manifest {
+        Some(S3Object::new(
+            &args.output_location.bucket,
+            args.output_location.key.to_owned() + ".manifest.jsonl",
+        ))
+    } else {
+        args.manifest_object.clone()
+    };
+
     archiver
         .create_zip(
             client,
             objects,
             &args.output_location,
-            args.manifest_object.as_ref(),
+            manifest_file.as_ref(),
         )
         .await
 }
