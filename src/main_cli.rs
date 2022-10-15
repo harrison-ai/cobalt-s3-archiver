@@ -96,10 +96,32 @@ async fn create_zip_from_read(
 
 #[cfg(test)]
 mod test {
+    use clap::error::ErrorKind;
+
     use super::*;
+    #[test]
+    fn test_arg_parser_happy() {
+        let result = Args::try_parse_from(vec!["prog", "s3://output/zip"]);
+        assert!(result.is_ok());
+    }
 
     #[test]
-    fn write_tests_here() -> Result<()> {
-        Ok(())
+    fn test_arg_parser_manifest_and_generate() {
+        let result = Args::try_parse_from(vec![
+            "prog",
+            "s3://output/zip",
+            "-m",
+            "s3://output/manifest",
+            "-g",
+        ]);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn test_arg_parser_invalid_s3_url() {
+        let result = Args::try_parse_from(vec!["prog", "output/zip"]);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), ErrorKind::ValueValidation);
     }
 }

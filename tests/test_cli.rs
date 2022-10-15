@@ -334,3 +334,28 @@ async fn test_invalid_part_size_1k() {
     cmd.envs(env);
     cmd.assert().failure();
 }
+
+#[tokio::test]
+#[named]
+async fn test_manifest_file_and_generate() {
+    let test_client = S3TestClient::default();
+    let (container, client) = test_client.client().await;
+    let env = get_aws_env(&container);
+    let mut rng = fixtures::seeded_rng(function_name!());
+
+    let dst_key = fixtures::gen_random_file_name(&mut rng);
+    let dst_obj = s3_archiver::S3Object::new("dst-bucket", &dst_key);
+    let manifest_key = fixtures::gen_random_file_name(&mut rng);
+    let manifest_obj = s3_archiver::S3Object::new("dst-bucket", &manifest_key);
+    fixtures::create_bucket(&client, &dst_obj.bucket)
+        .await
+        .unwrap();
+
+    let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("-m")
+        .arg(Url::try_from(manifest_obj).unwrap().as_str());
+    cmd.arg("-g");
+    cmd.arg(Url::try_from(dst_obj).unwrap().as_str());
+    cmd.envs(env);
+    cmd.assert().failure();
+}
