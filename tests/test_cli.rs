@@ -5,10 +5,10 @@ use assert_cmd::Command;
 use bytesize::MIB;
 use common::aws::S3TestClient;
 use common::fixtures;
-use url::Url;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use testcontainers::{Container, Image};
+use url::Url;
 
 fn get_aws_env<T: Image>(container: &Option<Box<Container<T>>>) -> HashMap<String, String> {
     let mut cmd_env = HashMap::new();
@@ -63,8 +63,9 @@ async fn test_cli_run() {
         src_objs
             .iter()
             .map(|obj| Url::try_from(obj).map(String::from))
-            .collect::<Result<Vec<_>, _>>().unwrap()
-            .join("\n")
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .join("\n"),
     );
     cmd.envs(env);
     let output = cmd.output().unwrap();
@@ -104,8 +105,9 @@ async fn test_cli_run_with_size() {
     cmd.write_stdin(
         src_objs
             .iter()
-             .map(|obj| Url::try_from(obj).map(String::from))
-            .collect::<Result<Vec<_>, _>>().unwrap()
+            .map(|obj| Url::try_from(obj).map(String::from))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
             .join("\n"),
     );
     cmd.envs(env);
@@ -148,7 +150,8 @@ async fn test_cli_run_with_src_fetch_buffer() {
         src_objs
             .iter()
             .map(|obj| Url::try_from(obj).map(String::from))
-            .collect::<Result<Vec<_>, _>>().unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
             .join("\n"),
     );
     cmd.envs(env);
@@ -189,12 +192,14 @@ async fn test_cli_run_with_src_manifest() {
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
 
     cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
-    cmd.arg("-m").arg(url::Url::try_from(&manifest_obj).unwrap().as_str());
+    cmd.arg("-m")
+        .arg(url::Url::try_from(&manifest_obj).unwrap().as_str());
     cmd.write_stdin(
         src_objs
             .iter()
             .map(|obj| Url::try_from(obj).map(String::from))
-            .collect::<Result<Vec<_>, _>>().unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
             .join("\n"),
     );
     cmd.envs(env);
@@ -203,9 +208,15 @@ async fn test_cli_run_with_src_manifest() {
     io::stderr().write_all(&output.stderr).unwrap();
 
     assert!(output.status.success());
-    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter(), Some(&manifest_obj))
-        .await
-        .unwrap()
+    fixtures::validate_zip(
+        &client,
+        &dst_obj,
+        None,
+        src_objs.iter(),
+        Some(&manifest_obj),
+    )
+    .await
+    .unwrap()
 }
 
 #[test]
