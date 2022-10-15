@@ -73,7 +73,7 @@ async fn create_zip_from_read(
             client,
             objects,
             &args.output_location,
-            args.manifest_object.clone(),
+            args.manifest_object.as_ref(),
         )
         .await
 }

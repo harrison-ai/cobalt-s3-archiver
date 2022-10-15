@@ -120,7 +120,7 @@ pub mod aws {
 
 pub mod fixtures {
 
-    use anyhow::Result;
+    use anyhow::{Context, Result};
     use async_zip::read::mem::ZipFileReader;
     use async_zip::read::ZipEntryReader;
     use aws_sdk_s3::error::HeadObjectError;
@@ -130,10 +130,12 @@ pub mod fixtures {
     use aws_sdk_s3::Client;
     use bytesize::MIB;
     use crc::{Crc, CRC_32_ISCSI};
+    use futures::StreamExt;
     use rand::distributions::{Alphanumeric, DistString};
     use rand::Rng;
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
+    use s3_archiver::ManifestEntry;
     use s3_archiver::{Compression, S3Object};
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -221,11 +223,33 @@ pub mod fixtures {
         zip_obj: &S3Object,
         prefix_to_strip: Option<&'a str>,
         file_names: I,
+        manifest_obj: Option<&S3Object>,
     ) -> Result<()>
     where
         I: IntoIterator<Item = &'a S3Object> + 'a,
     {
         let bytes = fetch_bytes(client, zip_obj).await?;
+
+        use std::io::prelude::*;
+        use std::io::BufReader;
+        let manifest_bytes = match manifest_obj {
+            Some(obj) => Some(fetch_bytes(client, obj).await?)
+                .map(std::io::Cursor::new)
+                .map(BufReader::new)
+                .map(|b| b.lines()),
+            //.map(|i|i.chain(std::iter::repeat(Ok("".to_owned)))),
+            None => None,
+        };
+
+        let mut manifest_entries = manifest_bytes
+            .into_iter()
+            .flatten()
+            .map(|i| i.map_err(anyhow::Error::from))
+            .flat_map(|i| {
+                i.and_then(|i| {
+                    serde_json::from_str::<ManifestEntry>(&i).map_err(anyhow::Error::from)
+                })
+            });
 
         //It was not possible to get this to work using the streaming ZipFileReader
         //This issue show similar issues https://github.com/Majored/rs-async-zip/issues/29
@@ -242,6 +266,15 @@ pub mod fixtures {
                 src.key
                     .trim_start_matches(prefix_to_strip.unwrap_or_default())
             );
+            if manifest_obj.is_some() {
+                let manifest_entry = manifest_entries
+                    .next()
+                    .context(format!("Missing manifest entry {:?}", src))?;
+                assert_eq!(
+                    ManifestEntry::new(src, dst_crc, &entry_name),
+                    manifest_entry
+                );
+            }
         }
         Ok(())
     }
@@ -265,6 +298,7 @@ pub mod fixtures {
         pub src_keys: Vec<String>,
         pub file_size: usize,
         pub compression: Compression,
+        pub manifest_file: Option<S3Object>,
     }
 
     impl<'a> CheckZipArgs<'a> {
@@ -275,6 +309,7 @@ pub mod fixtures {
             src_keys: Vec<String>,
             file_size: usize,
             compression: Compression,
+            manifest_file: Option<S3Object>,
         ) -> Self {
             CheckZipArgs {
                 dst_obj,
@@ -283,6 +318,7 @@ pub mod fixtures {
                 src_keys,
                 file_size,
                 compression,
+                manifest_file,
             }
         }
 
@@ -297,6 +333,8 @@ pub mod fixtures {
         ) -> Self {
             let dst_file = gen_random_file_name(rng);
             let dst_obj = S3Object::new("dst-bucket", dst_file);
+            let manifest_file = gen_random_file_name(rng);
+            let manifest_obj = S3Object::new("dst-bucket", manifest_file);
             let prefix_to_strip = Option::<&str>::None;
             let src_bucket = "src-bucket";
             let src_keys = match src_dirs {
@@ -317,6 +355,7 @@ pub mod fixtures {
                 src_keys,
                 file_size,
                 compression,
+                Some(manifest_obj),
             )
         }
     }
@@ -340,6 +379,7 @@ pub mod fixtures {
                 src_files,
                 file_size,
                 compression,
+                None,
             )
         }
     }
@@ -372,7 +412,12 @@ pub mod fixtures {
             .compression(args.compression)
             .build();
         archiver
-            .create_zip(client, args.src_objs().map(Ok), &args.dst_obj, None)
+            .create_zip(
+                client,
+                args.src_objs().map(Ok),
+                &args.dst_obj,
+                args.manifest_file.as_ref(),
+            )
             .await?;
 
         let files_to_validate: Vec<_> = args.src_objs().collect();
@@ -381,6 +426,7 @@ pub mod fixtures {
             &args.dst_obj,
             args.prefix_to_strip,
             files_to_validate.iter(),
+            args.manifest_file.as_ref(),
         )
         .await
     }

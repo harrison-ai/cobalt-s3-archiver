@@ -39,6 +39,47 @@ async fn test_put_get() {
 
 #[tokio::test]
 #[named]
+async fn test_put_get_with_manifest() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let test_bucket = "test-bucket";
+    let mut rng = fixtures::seeded_rng(function_name!());
+    let src_key = fixtures::gen_random_file_name(&mut rng);
+    let dst_key = fixtures::gen_random_file_name(&mut rng);
+    let manifest_key = fixtures::gen_random_file_name(&mut rng);
+    let src = S3Object::new(test_bucket, src_key);
+    let manfest_object = S3Object::new(test_bucket, manifest_key);
+    fixtures::create_bucket(&s3_client, test_bucket)
+        .await
+        .unwrap();
+    fixtures::create_random_file(&s3_client, &src, 10)
+        .await
+        .unwrap();
+
+    let dst: S3Object = S3Object::new(test_bucket, dst_key);
+    let archiver = s3_archiver::Archiver::builder()
+        .compression(Compression::Stored)
+        .build();
+    archiver
+        .create_zip(
+            &s3_client,
+            vec![Ok(src)].into_iter(),
+            &dst,
+            Some(&manfest_object),
+        )
+        .await
+        .expect("Expected zip creation");
+
+    assert!(fixtures::check_object_exists(&s3_client, &dst)
+        .await
+        .unwrap());
+    assert!(fixtures::check_object_exists(&s3_client, &manfest_object)
+        .await
+        .unwrap());
+}
+#[tokio::test]
+#[named]
 async fn test_check_zip_stored() {
     let test_client = S3TestClient::default();
     let (_container, s3_client) = test_client.client().await;

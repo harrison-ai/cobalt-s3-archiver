@@ -131,11 +131,7 @@ pub struct ManifestFileUpload<'a> {
 
 impl<'a> ManifestFileUpload<'a> {
     pub fn new(client: &'a aws_sdk_s3::Client, dst: &S3Object) -> ManifestFileUpload<'a> {
-        let manifest_upload = cobalt_aws::s3::AsyncPutObject::new(
-            client,
-            &dst.bucket,
-            &(dst.key.to_owned() + ".manifest.jsonl"),
-        );
+        let manifest_upload = cobalt_aws::s3::AsyncPutObject::new(client, &dst.bucket, &dst.key);
         ManifestFileUpload {
             buffer: manifest_upload,
         }
@@ -168,12 +164,12 @@ pub struct Archiver<'a> {
 }
 
 impl<'a> Archiver<'a> {
-    pub async fn create_zip<'c, I>(
+    pub async fn create_zip<I>(
         &self,
         client: &aws_sdk_s3::Client,
         srcs: I,
         output_location: &S3Object,
-        manifest_object: Option<S3Object>,
+        manifest_object: Option<&S3Object>,
     ) -> Result<()>
     where
         I: IntoIterator<Item = Result<S3Object>>,
@@ -262,7 +258,7 @@ impl<'a> Archiver<'a> {
             Some(object) => {
                 zip_stream
                     .try_fold(
-                        ManifestFileUpload::new(client, &object),
+                        ManifestFileUpload::new(client, object),
                         |mut manifest_upload, entry| async move {
                             manifest_upload.write_manifest_entry(&entry).await?;
                             Ok(manifest_upload)

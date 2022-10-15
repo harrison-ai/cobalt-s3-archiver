@@ -71,7 +71,7 @@ async fn test_cli_run() {
     io::stderr().write_all(&output.stderr).unwrap();
 
     assert!(output.status.success());
-    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter())
+    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter(), None)
         .await
         .unwrap()
 }
@@ -113,7 +113,7 @@ async fn test_cli_run_with_size() {
     io::stderr().write_all(&output.stderr).unwrap();
 
     assert!(output.status.success());
-    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter())
+    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter(), None)
         .await
         .unwrap()
 }
@@ -155,7 +155,7 @@ async fn test_cli_run_with_src_fetch_buffer() {
     io::stderr().write_all(&output.stderr).unwrap();
 
     assert!(output.status.success());
-    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter())
+    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter(), None)
         .await
         .unwrap()
 }
