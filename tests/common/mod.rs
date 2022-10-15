@@ -130,7 +130,6 @@ pub mod fixtures {
     use aws_sdk_s3::Client;
     use bytesize::MIB;
     use crc::{Crc, CRC_32_ISCSI};
-    use futures::StreamExt;
     use rand::distributions::{Alphanumeric, DistString};
     use rand::Rng;
     use rand::SeedableRng;
@@ -291,6 +290,7 @@ pub mod fixtures {
         Ok(CASTAGNOLI.checksum(&file_bytes))
     }
 
+    #[derive(Debug)]
     pub struct CheckZipArgs<'a> {
         pub dst_obj: S3Object,
         pub prefix_to_strip: Option<&'a str>,

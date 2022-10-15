@@ -81,6 +81,19 @@ impl FromStr for S3Object {
     }
 }
 
+impl TryFrom<S3Object> for Url {
+    type Error = url::ParseError;
+    fn try_from(obj: S3Object) -> std::result::Result<Self, Self::Error> {
+        Url::parse(&format!("s3://{}/{}", obj.bucket, obj.key))
+    }
+}
+
+impl TryFrom<&S3Object> for Url {
+    type Error = url::ParseError;
+    fn try_from(obj: &S3Object) -> std::result::Result<Self, Self::Error> {
+        Url::parse(&format!("s3://{}/{}", obj.bucket, obj.key))
+    }
+}
 #[derive(Debug, Clone, ValueEnum, Copy, PartialEq, Eq)]
 pub enum Compression {
     Stored,

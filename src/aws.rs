@@ -42,7 +42,7 @@ enum AsyncMultipartUploadState<'a> {
     Closed,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct AsyncMultipartUploadConfig<'a> {
     client: &'a Client,
     bucket: String,
