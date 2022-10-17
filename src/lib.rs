@@ -221,14 +221,15 @@ impl<'a> Archiver<'a> {
                 false => err(Error::msg("ZIP64 is not supported: Too many zip entries.")),
                 true => ok(src),
             },
-        )
-        .and_then(|src| {
-            // Entry_path is
-            let entry_path = src
+        ).and_then(|src|{
+         ok((src
                 .key
                 .trim_start_matches(self.prefix_strip.unwrap_or_default())
-                .to_owned();
-            match entry_path.is_empty() {
+                .to_owned(), src))
+        })
+        .and_then(|(entry_path, src)| {
+            // Entry_path is
+           match entry_path.is_empty() {
                 true => err(Error::msg(format!(
                     "{} with out prefix {:?} is an invalid entry ",
                     src.key, self.prefix_strip
