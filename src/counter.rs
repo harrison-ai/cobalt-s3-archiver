@@ -9,6 +9,7 @@ use std::task::Context;
 
 pin_project! {
     ///An AyncWrite which counts bytes written.
+    #[derive(Debug)]
     pub struct ByteCounter<T:AsyncWrite> {
         byte_count: u128,
         #[pin]
@@ -53,6 +54,7 @@ impl<T: AsyncWrite> AsyncWrite for ByteCounter<T> {
 pin_project! {
     ///An AyncWrite which raises an Error if the number of bytes
     ///written is more that the `byte_limit`
+    #[derive(Debug)]
     pub struct ByteLimit<T:AsyncWrite> {
         byte_limit: u128,
         #[pin]

@@ -8,6 +8,7 @@ use common::fixtures;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use testcontainers::{Container, Image};
+use url::Url;
 
 fn get_aws_env<T: Image>(container: &Option<Box<Container<T>>>) -> HashMap<String, String> {
     let mut cmd_env = HashMap::new();
@@ -57,12 +58,13 @@ async fn test_cli_run() {
         .await
         .unwrap();
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
-    cmd.arg(format!("s3://{}/{}", dst_obj.bucket, dst_obj.key));
+    cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
     cmd.write_stdin(
         src_objs
             .iter()
-            .map(|obj| format!("s3://{}/{}", obj.bucket, obj.key))
-            .collect::<Vec<_>>()
+            .map(|obj| Url::try_from(obj).map(String::from))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
             .join("\n"),
     );
     cmd.envs(env);
@@ -71,7 +73,7 @@ async fn test_cli_run() {
     io::stderr().write_all(&output.stderr).unwrap();
 
     assert!(output.status.success());
-    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter())
+    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter(), None)
         .await
         .unwrap()
 }
@@ -98,13 +100,14 @@ async fn test_cli_run_with_size() {
         .await
         .unwrap();
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
-    cmd.arg(format!("s3://{}/{}", dst_obj.bucket, dst_obj.key));
+    cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
     cmd.arg("-s").arg("5MiB");
     cmd.write_stdin(
         src_objs
             .iter()
-            .map(|obj| format!("s3://{}/{}", obj.bucket, obj.key))
-            .collect::<Vec<_>>()
+            .map(|obj| Url::try_from(obj).map(String::from))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
             .join("\n"),
     );
     cmd.envs(env);
@@ -113,7 +116,7 @@ async fn test_cli_run_with_size() {
     io::stderr().write_all(&output.stderr).unwrap();
 
     assert!(output.status.success());
-    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter())
+    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter(), None)
         .await
         .unwrap()
 }
@@ -124,6 +127,7 @@ async fn test_cli_run_with_src_fetch_buffer() {
     let test_client = S3TestClient::default();
     let (container, client) = test_client.client().await;
     let env = get_aws_env(&container);
+
     let src_bucket = "src-bucket";
     let mut rng = fixtures::seeded_rng(function_name!());
 
@@ -140,13 +144,14 @@ async fn test_cli_run_with_src_fetch_buffer() {
         .await
         .unwrap();
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
-    cmd.arg(format!("s3://{}/{}", dst_obj.bucket, dst_obj.key));
+    cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
     cmd.arg("-f").arg("10");
     cmd.write_stdin(
         src_objs
             .iter()
-            .map(|obj| format!("s3://{}/{}", obj.bucket, obj.key))
-            .collect::<Vec<_>>()
+            .map(|obj| Url::try_from(obj).map(String::from))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
             .join("\n"),
     );
     cmd.envs(env);
@@ -155,10 +160,65 @@ async fn test_cli_run_with_src_fetch_buffer() {
     io::stderr().write_all(&output.stderr).unwrap();
 
     assert!(output.status.success());
-    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter())
+    fixtures::validate_zip(&client, &dst_obj, None, src_objs.iter(), None)
         .await
         .unwrap()
 }
+
+#[tokio::test]
+#[named]
+async fn test_cli_run_with_src_manifest() {
+    let test_client = S3TestClient::default();
+    let (container, client) = test_client.client().await;
+    let env = get_aws_env(&container);
+
+    let src_bucket = "src-bucket";
+    let mut rng = fixtures::seeded_rng(function_name!());
+
+    let src_objs =
+        fixtures::s3_object_from_keys(src_bucket, fixtures::gen_random_file_names(&mut rng, 10))
+            .collect();
+    fixtures::create_src_files(&client, src_bucket, &src_objs, MIB as usize)
+        .await
+        .unwrap();
+
+    let dst_key = fixtures::gen_random_file_name(&mut rng);
+    let dst_obj = s3_archiver::S3Object::new("dst-bucket", &dst_key);
+    fixtures::create_bucket(&client, &dst_obj.bucket)
+        .await
+        .unwrap();
+    let manifest_key = fixtures::gen_random_file_name(&mut rng);
+    let manifest_obj = s3_archiver::S3Object::new("dst-bucket", &manifest_key);
+    let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+
+    cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
+    cmd.arg("-m")
+        .arg(url::Url::try_from(&manifest_obj).unwrap().as_str());
+    cmd.write_stdin(
+        src_objs
+            .iter()
+            .map(|obj| Url::try_from(obj).map(String::from))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .join("\n"),
+    );
+    cmd.envs(env);
+    let output = cmd.output().unwrap();
+    io::stdout().write_all(&output.stdout).unwrap();
+    io::stderr().write_all(&output.stderr).unwrap();
+
+    assert!(output.status.success());
+    fixtures::validate_zip(
+        &client,
+        &dst_obj,
+        None,
+        src_objs.iter(),
+        Some(&manifest_obj),
+    )
+    .await
+    .unwrap()
+}
+
 #[test]
 fn test_cli_no_args() {
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
@@ -187,7 +247,7 @@ async fn test_cli_no_trailing_slash_prefix() {
         .unwrap();
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
     cmd.arg("-p").arg("no_trailing_slash");
-    cmd.arg(format!("s3://{}/{}", dst_obj.bucket, dst_obj.key));
+    cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
     cmd.envs(env);
     cmd.assert().failure();
 }
@@ -207,7 +267,7 @@ async fn test_cli_has_leading_slash_prefix() {
         .unwrap();
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
     cmd.arg("-p").arg("/no_trailing_slash/");
-    cmd.arg(format!("s3://{}/{}", dst_obj.bucket, dst_obj.key));
+    cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
     cmd.envs(env);
     cmd.assert().failure();
 }
@@ -227,7 +287,7 @@ async fn test_invalid_s3_src() {
         .unwrap();
 
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
-    cmd.arg(format!("s3://{}/{}", dst_obj.bucket, dst_obj.key));
+    cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
     cmd.envs(env);
     cmd.write_stdin("an_invalid_src_url");
     cmd.assert().failure();
@@ -249,7 +309,7 @@ async fn test_invalid_part_size_0b() {
 
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
     cmd.arg("-s").arg("0");
-    cmd.arg(format!("s3://{}/{}", dst_obj.bucket, dst_obj.key));
+    cmd.arg(Url::try_from(dst_obj).unwrap().as_str());
     cmd.envs(env);
     cmd.assert().failure();
 }
@@ -270,7 +330,32 @@ async fn test_invalid_part_size_1k() {
 
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
     cmd.arg("-s").arg("1K");
-    cmd.arg(format!("s3://{}/{}", dst_obj.bucket, dst_obj.key));
+    cmd.arg(Url::try_from(dst_obj).unwrap().as_str());
+    cmd.envs(env);
+    cmd.assert().failure();
+}
+
+#[tokio::test]
+#[named]
+async fn test_manifest_file_and_generate() {
+    let test_client = S3TestClient::default();
+    let (container, client) = test_client.client().await;
+    let env = get_aws_env(&container);
+    let mut rng = fixtures::seeded_rng(function_name!());
+
+    let dst_key = fixtures::gen_random_file_name(&mut rng);
+    let dst_obj = s3_archiver::S3Object::new("dst-bucket", &dst_key);
+    let manifest_key = fixtures::gen_random_file_name(&mut rng);
+    let manifest_obj = s3_archiver::S3Object::new("dst-bucket", &manifest_key);
+    fixtures::create_bucket(&client, &dst_obj.bucket)
+        .await
+        .unwrap();
+
+    let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("-m")
+        .arg(Url::try_from(manifest_obj).unwrap().as_str());
+    cmd.arg("-g");
+    cmd.arg(Url::try_from(dst_obj).unwrap().as_str());
     cmd.envs(env);
     cmd.assert().failure();
 }
