@@ -1,4 +1,5 @@
 pub mod aws;
+pub mod checksum;
 pub mod counter;
 
 use std::str::FromStr;
@@ -10,8 +11,9 @@ use anyhow::{bail, ensure, Context, Result};
 use async_zip::{Compression as AsyncCompression, ZipEntryBuilder};
 use aws::AsyncMultipartUpload;
 use aws_sdk_s3::output::GetObjectOutput;
+use checksum::CRC32Sink;
 use clap::ValueEnum;
-use futures::future::{err, ok};
+use futures::future;
 use futures::lock::Mutex;
 use futures::prelude::*;
 use futures::stream;
@@ -218,23 +220,22 @@ impl<'a> Archiver<'a> {
         .map(|(src, src_index)| src.map(|s| (s, src_index)))
         .and_then(
             |(src, src_index)| match src_index <= MAX_FILES_IN_ZIP.into() {
-                false => err(Error::msg("ZIP64 is not supported: Too many zip entries.")),
-                true => ok(src),
+                false => future::err(Error::msg("ZIP64 is not supported: Too many zip entries.")),
+                true => future::ok(src),
             },
         ).and_then(|src|{
-         ok((src
+         future::ok((src
                 .key
                 .trim_start_matches(self.prefix_strip.unwrap_or_default())
                 .to_owned(), src))
         })
         .and_then(|(entry_path, src)| {
-            // Entry_path is
            match entry_path.is_empty() {
-                true => err(Error::msg(format!(
+                true => future::err(Error::msg(format!(
                     "{} with out prefix {:?} is an invalid entry ",
                     src.key, self.prefix_strip
                 ))),
-                false => ok((src, entry_path)),
+                false => future::ok((src, entry_path)),
             }
         })
         .map_ok(move |(src, entry_path)| {
@@ -249,10 +250,10 @@ impl<'a> Archiver<'a> {
         .try_buffered(self.src_fetch_buffer) //This prefetches the S3 src objects
         .and_then(|(response, src, entry_path)|{
             match response.content_length() > MAX_FILE_IN_ZIP_SIZE_BYTES.into() {
-                true => err(Error::msg(format!(
+                true => future::err(Error::msg(format!(
                             "ZIP64 is not supported: Max file size is {MAX_FILE_IN_ZIP_SIZE_BYTES}, {src:?} is {} bytes", response.content_length)
                         )),
-                false => ok((response, src, entry_path))
+                false => future::ok((response, src, entry_path))
             }
         })
         .and_then(|(response, src, entry_path)| {
@@ -304,7 +305,7 @@ impl<'a> Archiver<'a> {
         let mut entry_writer = zip.write_entry_stream(opts).await?;
 
         //crc is needed for validation
-        let mut crc_sink = crate::counter::CRC32Sink::new(&CRC32);
+        let mut crc_sink = CRC32Sink::new(&CRC32);
 
         while let Some(bytes) = response.body.next().await {
             let bytes = bytes?;
