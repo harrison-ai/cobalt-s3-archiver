@@ -18,7 +18,7 @@ use futures::lock::Mutex;
 use futures::prelude::*;
 use futures::stream;
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio_util::compat::FuturesAsyncWriteCompatExt;
 use typed_builder::TypedBuilder;
 use url::Url;
@@ -165,8 +165,6 @@ impl<'a> ManifestFileUpload<'a> {
     }
 }
 
-const CRC32: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_ISCSI);
-
 #[derive(Debug, TypedBuilder)]
 pub struct Archiver<'a> {
     #[builder(default)]
@@ -305,7 +303,7 @@ impl<'a> Archiver<'a> {
         let mut entry_writer = zip.write_entry_stream(opts).await?;
 
         //crc is needed for validation
-        let mut crc_sink = CRC32Sink::new(&CRC32);
+        let mut crc_sink = CRC32Sink::default();
 
         while let Some(bytes) = response.body.next().await {
             let bytes = bytes?;
@@ -320,6 +318,65 @@ impl<'a> Archiver<'a> {
             .context("Expected CRC Sink to have value")?;
         Ok(crc)
     }
+}
+
+pub async fn validate_zip(
+    client: &aws_sdk_s3::Client,
+    manifest_file: &S3Object,
+    zip_file: &S3Object,
+) -> Result<()> {
+    let manifest_request = client
+        .get_object()
+        .bucket(&manifest_file.bucket)
+        .key(&manifest_file.key)
+        .send()
+        .map_ok(|r| r.body.into_async_read())
+        .map_ok(BufReader::new)
+        .map_ok(|b| b.lines());
+
+    let zip_request = client
+        .get_object()
+        .bucket(&zip_file.bucket)
+        .key(&zip_file.key)
+        .send()
+        .map_ok(|r| r.body);
+
+    let (manifest_lines, zip_response) = futures::join!(manifest_request, zip_request);
+    let mut manifest_lines = manifest_lines?;
+    let zip_bytes: Vec<u8> = zip_response?.collect().await?.into_bytes().into();
+    let mut zip_reader = async_zip::read::mem::ZipFileReader::new(&zip_bytes).await?;
+
+    for index in 0..zip_reader.entries().len() {
+        let manifest_entry = manifest_lines
+            .next_line()
+            .await?
+            .context("Manifest has too few entries")
+            .and_then(|l| serde_json::from_str::<ManifestEntry>(&l).map_err(anyhow::Error::from))?;
+        let entry_reader = zip_reader.entry_reader(index).await?;
+
+        let mut sink = FuturesAsyncWriteCompatExt::compat_write(CRC32Sink::default());
+        ensure!(
+            manifest_entry.filename_in_zip == entry_reader.entry().filename(),
+            format!(
+                "Validation manifest entry filename {} did not match zip {}",
+                manifest_entry.filename_in_zip,
+                entry_reader.entry().filename()
+            )
+        );
+        entry_reader
+            .copy_to_end_crc(&mut sink, 64 * bytesize::KB as usize)
+            .await?;
+        sink.shutdown().await?;
+        ensure!(
+            sink.get_ref().value() == Some(manifest_entry.crc32),
+            format!(
+                "Validation error manifest entry {manifest_entry:?} crc32 did not match {:?}",
+                sink.get_ref().value()
+            )
+        );
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
