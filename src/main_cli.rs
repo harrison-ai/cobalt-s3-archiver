@@ -1,13 +1,24 @@
 use anyhow::{ensure, Result};
 use aws_sdk_s3::Client;
 use bytesize::ByteSize;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use cobalt_aws::config;
 use s3_archiver::{Compression, S3Object};
 use std::io::{BufRead, BufReader};
 
-#[derive(Parser, Debug, PartialEq, Eq)]
+#[derive(Parser, Debug, PartialEq, Clone)]
 struct Args {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand, Debug, PartialEq, Clone)]
+enum Command {
+    Archive(ArchiveCommand),
+}
+
+#[derive(Parser, Debug, PartialEq, Clone)]
+struct ArchiveCommand {
     /// S3 output location `s3://{bucket}/{key}`
     output_location: S3Object,
     #[clap(
@@ -47,13 +58,17 @@ async fn main() -> Result<()> {
     let config = config::load_from_env().await?;
     let client = Client::new(&config);
 
-    create_zip_from_read(&client, &mut BufReader::new(std::io::stdin()), &args).await
+    match args.command {
+        Command::Archive(cmd) => {
+            create_zip_from_read(&client, &mut BufReader::new(std::io::stdin()), &cmd).await
+        }
+    }
 }
 
 async fn create_zip_from_read(
     client: &Client,
     input: &mut impl BufRead,
-    args: &Args,
+    args: &ArchiveCommand,
 ) -> Result<()> {
     ensure!(
         args.manifest_object
@@ -101,7 +116,7 @@ mod test {
     use super::*;
     #[test]
     fn test_arg_parser_happy() {
-        let result = Args::try_parse_from(vec!["prog", "s3://output/zip"]);
+        let result = Args::try_parse_from(vec!["prog", "archive", "s3://output/zip"]);
         assert!(result.is_ok());
     }
 
@@ -109,6 +124,7 @@ mod test {
     fn test_arg_parser_manifest_and_generate() {
         let result = Args::try_parse_from(vec![
             "prog",
+            "archive",
             "s3://output/zip",
             "-m",
             "s3://output/manifest",
@@ -120,7 +136,7 @@ mod test {
 
     #[test]
     fn test_arg_parser_invalid_s3_url() {
-        let result = Args::try_parse_from(vec!["prog", "output/zip"]);
+        let result = Args::try_parse_from(vec!["prog", "archive", "output/zip"]);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), ErrorKind::ValueValidation);
     }
