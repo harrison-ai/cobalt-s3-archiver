@@ -15,6 +15,7 @@ struct Args {
 #[derive(Subcommand, Debug, PartialEq, Clone)]
 enum Command {
     Archive(ArchiveCommand),
+    Validate(ValidateCommand),
 }
 
 #[derive(Parser, Debug, PartialEq, Clone)]
@@ -51,6 +52,14 @@ struct ArchiveCommand {
     auto_manifest: bool,
 }
 
+#[derive(Parser, Debug, PartialEq, Clone)]
+struct ValidateCommand {
+    /// S3 manifest location `s3://{bucket}/{key}`
+    manifest_file: S3Object,
+    /// S3 ZIP file location `s3://{bucket}/{key}`
+    zip_file: S3Object,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -61,6 +70,9 @@ async fn main() -> Result<()> {
     match args.command {
         Command::Archive(cmd) => {
             create_zip_from_read(&client, &mut BufReader::new(std::io::stdin()), &cmd).await
+        }
+        Command::Validate(cmd) => {
+            s3_archiver::validate_zip(&client, &cmd.manifest_file, &cmd.zip_file).await
         }
     }
 }

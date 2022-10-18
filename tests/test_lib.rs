@@ -255,3 +255,23 @@ async fn test_check_zip_with_prefix_that_does_not_end_with_slash() {
         .await
         .is_err());
 }
+
+#[tokio::test]
+#[named]
+async fn test_validate_deflate_zip() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let mut rng = fixtures::seeded_rng(function_name!());
+    let args = fixtures::CheckZipArgs {
+        compression: Compression::Deflate,
+        ..fixtures::CheckZipArgs::seeded_args(&mut rng, 10, None)
+    };
+
+    fixtures::create_and_validate_zip(&s3_client, &args)
+        .await
+        .unwrap();
+    s3_archiver::validate_zip(&s3_client, &args.manifest_file.unwrap(), &args.dst_obj)
+        .await
+        .unwrap();
+}
