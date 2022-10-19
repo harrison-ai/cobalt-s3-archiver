@@ -14,7 +14,9 @@ struct Args {
 
 #[derive(Subcommand, Debug, PartialEq, Clone)]
 enum Command {
+    ///Create an ZIP archive in S3 from source files in S3.
     Archive(ArchiveCommand),
+    ///Validate a ZIP archvie matches the given manifest.
     Validate(ValidateCommand),
 }
 

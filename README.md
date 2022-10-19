@@ -8,26 +8,15 @@ to keep the memory usage low.
 ## Usage
 
 ```bash
-Usage: s3-archiver-cli [OPTIONS] <OUTPUT_LOCATION>
+Usage: s3-archiver-cli <COMMAND>
 
-Arguments:
-  <OUTPUT_LOCATION>  S3 output location `s3://{bucket}/{key}`
+Commands:
+  archive   Create an ZIP archive in S3 from source files in S3
+  validate  Validate a ZIP archvie matches the given manifest
+  help      Print this message or the help of the given subcommand(s)
 
 Options:
-  -c <COMPRESSION>
-          Compression to use [default: stored] [possible values: stored, deflate, bzip, lzma, zstd, xz]
-  -p, --prefix-strip <PREFIX_STRIP>
-          Prefix to remove from input keys
-  -s, --part-size <PART_SIZE>
-          Part size to use in multipart upload. Accepts human readable bytes e.g. K, KiB. Min 5MiB, Max 5GiB [default: 5MiB]
-  -f, --src-fetch-concurrency <SRC_FETCH_CONCURRENCY>
-          How many src object requests to eagerly fetch [default: 2]
-  -m, --manifest-object <MANIFEST_OBJECT>
-          The location to write the manifest object. A list of src files and their crc32 values
-  -g, --generate-manifest-name
-          Generate a manifest object at "{output_location}.manifest.jsonl"
-  -h, --help
-          Print help information
+  -h, --help  Print help information
 ```
 
 Each file will be `stored` in the ZIP with no compression unless a compression argument is provided. Supported compression includes deflate, bzip2, lzma, zstd and xz.  All input files will be compressed with the same compression.
