@@ -258,33 +258,38 @@ async fn test_check_zip_with_prefix_that_does_not_end_with_slash() {
 
 #[tokio::test]
 #[named]
-async fn test_validate_deflate_zip() {
+async fn test_validate_compressed_zip() {
     let test_client = S3TestClient::default();
     let (_container, s3_client) = test_client.client().await;
 
     let mut rng = fixtures::seeded_rng(function_name!());
-    let args = fixtures::CheckZipArgs {
-        compression: Compression::Deflate,
-        ..fixtures::CheckZipArgs::seeded_args(&mut rng, 10, None)
-    };
 
-    fixtures::create_and_validate_zip(&s3_client, &args)
+    use Compression::*;
+    let compressions = vec![Deflate, Bzip, Lzma, Zstd, Xz];
+    for compression in compressions {
+        let args = fixtures::CheckZipArgs {
+             compression,
+            ..fixtures::CheckZipArgs::seeded_args(&mut rng, 10, None)
+        };
+
+        fixtures::create_and_validate_zip(&s3_client, &args)
+            .await
+            .expect("Error creating and validating with {compression:?}");
+        s3_archiver::validate_zip_entry_bytes(
+            &s3_client,
+            args.manifest_file.as_ref().unwrap(),
+            &args.dst_obj,
+        )
         .await
-        .unwrap();
-    s3_archiver::validate_zip_entry_bytes(
-        &s3_client,
-        args.manifest_file.as_ref().unwrap(),
-        &args.dst_obj,
-    )
-    .await
-    .unwrap();
-    s3_archiver::validate_zip_central_dir(
-        &s3_client,
-        args.manifest_file.as_ref().unwrap(),
-        &args.dst_obj,
-    )
-    .await
-    .unwrap();
+        .expect("Error creating and validating zip entry bytes {compression:?}");
+        s3_archiver::validate_zip_central_dir(
+            &s3_client,
+            args.manifest_file.as_ref().unwrap(),
+            &args.dst_obj,
+        )
+        .await
+        .expect("Error creating and validating zip entry central-directory {compression:?}");
+    }
 }
 
 #[tokio::test]
@@ -298,6 +303,7 @@ async fn test_validate_store_zip() {
         ..fixtures::CheckZipArgs::seeded_args(&mut rng, 10, None)
     };
 
+    //This fails because it is set to store
     fixtures::create_and_validate_zip(&s3_client, &args)
         .await
         .unwrap();
