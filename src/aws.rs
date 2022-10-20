@@ -355,7 +355,7 @@ pub struct S3ObjectSeekableRead<'a> {
     client: &'a Client,
     src: &'a S3Object,
     position: u64,
-    length: i64,
+    length: u64,
     state: S3SeekState<'a>,
 }
 
@@ -370,7 +370,8 @@ impl<'a> S3ObjectSeekableRead<'a> {
             .key(&src.key)
             .send()
             .map_ok(|i| i.content_length())
-            .await?;
+            .map_ok(u64::try_from)
+            .await??; //Is there a better way to flatten this?
         Ok(Self {
             client,
             src,
@@ -399,11 +400,11 @@ impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
         cx: &mut Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        use S3SeekState::*;
-        if self.position >= u64::try_from(self.length).map_err(|e|Error::new(ErrorKind::Other, e))? {
-            //EOF
+
+        if self.position >= self.length {
             return Poll::Ready(Ok(()))
         }
+        use S3SeekState::*;
         match &mut self.state {
             Pending => {
                 //TODO: How to handle reads beyond end of object?
@@ -446,29 +447,24 @@ impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
 impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
     fn start_seek(mut self: Pin<&mut Self>, position: std::io::SeekFrom) -> std::io::Result<()> {
         //Set State to Pending and calculate current possition
-        println!("Seeking to {position:?}");
         use std::io::SeekFrom::*;
         match position {
             //u64 but S3 API only allow i64
             Start(p) => {
-                println!("Input p {}", p);
                 self.position = p;
-                println!("position after set is {}", self.position);
                 self.state = S3SeekState::Pending;
-                println!("Seeked to {}", self.position);
                 Ok(())
             }
             End(p) => {
-                let new_pos = i128::from(self.length - 1)
+                let new_pos = (i128::from(self.length) - 1)
                     .checked_add(p.into())
-                    .with_context(|| format!("Overflow {} + {p}", self.length - 1))
+                    .with_context(|| format!("Overflow {} + {p}", i128::from(self.length) - 1))
                     .map_err(|e| Error::new(ErrorKind::Other, e))?;
                 if new_pos < 0 {
                     return Err(Error::new(ErrorKind::Other, "Start Seek less than zero "));
                 }
                 self.position =
                     u64::try_from(new_pos).map_err(|e| Error::new(ErrorKind::Other, e))?;
-                println!("Seeked to {}", self.position);
                 self.state = S3SeekState::Pending;
                 Ok(())
             }
@@ -483,7 +479,6 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
                 self.position =
                     u64::try_from(new_pos).map_err(|e| Error::new(ErrorKind::Other, e))?;
                 self.state = S3SeekState::Pending;
-                println!("Seeked to {}", self.position);
                 Ok(())
             }
         }
@@ -491,7 +486,6 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
 
 
     fn poll_complete(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<u64>> {
-        println!("Poll Complete {}", self.position);
         Poll::Ready(Ok(self.position))
     }
 }

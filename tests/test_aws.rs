@@ -3,7 +3,7 @@ pub mod common;
 use std::io::SeekFrom;
 
 use ::function_name::named;
-use bytesize::{KIB, MIB};
+use bytesize::MIB;
 use common::aws::S3TestClient;
 use common::fixtures;
 use futures::prelude::*;

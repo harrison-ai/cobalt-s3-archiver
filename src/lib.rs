@@ -325,7 +325,6 @@ pub async fn validate_zip(
     manifest_file: &S3Object,
     zip_file: &S3Object,
 ) -> Result<()> {
-    println!("Start validation");
     let manifest_request = client
         .get_object()
         .bucket(&manifest_file.bucket)
@@ -335,19 +334,14 @@ pub async fn validate_zip(
         .map_ok(BufReader::new)
         .map_ok(|b| b.lines());
 
-    println!("Creating SeekableRead");
     let zip_request = crate::aws::S3ObjectSeekableRead::new(client, zip_file);
 
     let (manifest_lines, zip_response) = futures::join!(manifest_request, zip_request);
-    println!("Futures completed");
     let mut manifest_lines = manifest_lines?;
 
-    println!("Creating ZipFile Reader");
     let mut zip_reader = async_zip::read::seek::ZipFileReader::new(zip_response?).await?;
     
-    println!("ZipFile Reader starting iterator");
     for index in 0..zip_reader.entries().len() {
-        println!("Validating entry {index}");
         let manifest_entry = manifest_lines
             .next_line()
             .await?
