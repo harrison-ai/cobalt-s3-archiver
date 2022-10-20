@@ -145,7 +145,7 @@ mod tests {
         let mut sink = CRC32Sink::default();
         sink.send(&[0, 100]).await.unwrap();
         sink.close().await.unwrap();
-        assert_eq!(1463645103, sink.value.unwrap());
+        assert_eq!(184989630, sink.value.unwrap());
     }
 
     #[tokio::test]
