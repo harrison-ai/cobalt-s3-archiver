@@ -320,7 +320,7 @@ impl<'a> Archiver<'a> {
     }
 }
 
-pub async fn validate_zip(
+pub async fn validate_zip_entry_bytes(
     client: &aws_sdk_s3::Client,
     manifest_file: &S3Object,
     zip_file: &S3Object,
@@ -334,43 +334,97 @@ pub async fn validate_zip(
         .map_ok(BufReader::new)
         .map_ok(|b| b.lines());
 
-    let zip_request = crate::aws::S3ObjectSeekableRead::new(client, zip_file);
+    let zip_request = client
+        .get_object()
+        .bucket(&zip_file.bucket)
+        .key(&zip_file.key)
+        .send()
+        .map_ok(|r| r.body.into_async_read());
 
     let (manifest_lines, zip_response) = futures::join!(manifest_request, zip_request);
     let mut manifest_lines = manifest_lines?;
+    let zip_response = zip_response?;
 
-    let mut zip_reader = async_zip::read::seek::ZipFileReader::new(zip_response?).await?;
-    
-    for index in 0..zip_reader.entries().len() {
+    let mut zip_reader = async_zip::read::stream::ZipFileReader::new(zip_response);
+
+    while !zip_reader.finished() {
+        if let Some(reader) = zip_reader.entry_reader().await? {
+            let manifest_entry = manifest_lines
+                .next_line()
+                .await?
+                .context("Manifest has too few entries")
+                .and_then(|l| {
+                    serde_json::from_str::<ManifestEntry>(&l).map_err(anyhow::Error::from)
+                })?;
+            //Using the stream reader panics with Stored items
+            ensure!(
+                reader.entry().compression() != async_zip::Compression::Stored,
+                "Validation of CRC32 using bytes is not supported for Stored compression"
+            );
+
+            let entry_name = reader.entry().filename().to_owned();
+            let mut sink = FuturesAsyncWriteCompatExt::compat_write(CRC32Sink::default());
+            reader
+                .copy_to_end_crc(&mut sink, 64 * bytesize::KB as usize)
+                .await?;
+            sink.shutdown().await?;
+            validate_manifest(
+                &manifest_entry,
+                &entry_name,
+                sink.into_inner()
+                    .value()
+                    .context("Expected a crc32 value")?,
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_manifest(manifest_entry: &ManifestEntry, filename: &str, crc32: u32) -> Result<()> {
+    ensure!(
+        manifest_entry.filename_in_zip == filename,
+        format!(
+            "Validation manifest entry filename {manifest_entry:?} did not match zip {filename}",
+        )
+    );
+    ensure!(
+        manifest_entry.crc32 == crc32,
+        format!("Validation error manifest entry {manifest_entry:?} crc32 did not match {crc32}",)
+    );
+    Ok(())
+}
+
+pub async fn validate_zip_central_dir(
+    client: &aws_sdk_s3::Client,
+    manifest_file: &S3Object,
+    zip_file: &S3Object,
+) -> Result<()> {
+    let manifest_request = client
+        .get_object()
+        .bucket(&manifest_file.bucket)
+        .key(&manifest_file.key)
+        .send()
+        .map_ok(|r| r.body.into_async_read())
+        .map_ok(BufReader::new)
+        .map_ok(|b| b.lines());
+
+    let zip_request = aws::S3ObjectSeekableRead::new(client, zip_file);
+
+    let (manifest_lines, zip_response) = futures::join!(manifest_request, zip_request);
+    let mut manifest_lines = manifest_lines?;
+    let zip_response = zip_response?;
+
+    let zip_reader = async_zip::read::seek::ZipFileReader::new(zip_response).await?;
+
+    for entry in zip_reader.entries() {
         let manifest_entry = manifest_lines
             .next_line()
             .await?
             .context("Manifest has too few entries")
             .and_then(|l| serde_json::from_str::<ManifestEntry>(&l).map_err(anyhow::Error::from))?;
-        let entry_reader = zip_reader.entry_reader(index).await?;
-
-        let mut sink = FuturesAsyncWriteCompatExt::compat_write(CRC32Sink::default());
-        ensure!(
-            manifest_entry.filename_in_zip == entry_reader.entry().filename(),
-            format!(
-                "Validation manifest entry filename {} did not match zip {}",
-                manifest_entry.filename_in_zip,
-                entry_reader.entry().filename()
-            )
-        );
-        entry_reader
-            .copy_to_end_crc(&mut sink, 64 * bytesize::KB as usize)
-            .await?;
-        sink.shutdown().await?;
-        ensure!(
-            sink.get_ref().value() == Some(manifest_entry.crc32),
-            format!(
-                "Validation error manifest entry {manifest_entry:?} crc32 did not match {:?}",
-                sink.get_ref().value()
-            )
-        );
+        validate_manifest(&manifest_entry, entry.filename(), entry.crc32())?
     }
-
     Ok(())
 }
 

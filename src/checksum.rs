@@ -1,29 +1,27 @@
 use std::marker::PhantomData;
 use std::task::Poll;
 
-use crc::{Crc, CRC_32_ISCSI};
+use crc32fast::Hasher;
 use futures::AsyncWrite;
 use pin_project_lite::pin_project;
 use std::pin::Pin;
 use std::task::Context;
 
-pub const CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
-
 pin_project! {
 #[must_use = "sinks do nothing unless polled"]
-pub struct CRC32Sink<'a, Item: AsRef<[u8]>> {
-    digest: Option<crc::Digest<'a, u32>>,
+pub struct CRC32Sink<Item: AsRef<[u8]>> {
+    digest: Option<Hasher>,
     value: Option<u32>,
     //Needed to allow StreamExt to determine the type of Item
     marker:  std::marker::PhantomData<Item>
 }
 }
 
-impl<'a, Item: AsRef<[u8]>> CRC32Sink<'a, Item> {
+impl<Item: AsRef<[u8]>> CRC32Sink<Item> {
     //The generated digest needs to live as long as the crc.
-    pub fn new(crc: &'a Crc<u32>) -> CRC32Sink<'a, Item> {
+    pub fn new() -> CRC32Sink<Item> {
         CRC32Sink {
-            digest: Some(crc.digest()),
+            digest: Some(Hasher::new()),
             value: None,
             marker: PhantomData,
         }
@@ -34,19 +32,15 @@ impl<'a, Item: AsRef<[u8]>> CRC32Sink<'a, Item> {
     }
 }
 
-impl<'a, Item: AsRef<[u8]>> Default for CRC32Sink<'a, Item> {
+impl<Item: AsRef<[u8]>> Default for CRC32Sink<Item> {
     fn default() -> Self {
-        Self {
-            digest: Some(CRC32.digest()),
-            value: None,
-            marker: PhantomData,
-        }
+        Self::new()
     }
 }
 
 /// Futures crate provides a into_sink for AsyncWrite but it is
 /// not possible to get the value out of it afterwards.
-impl<'a, Item: AsRef<[u8]>> futures::sink::Sink<Item> for CRC32Sink<'a, Item> {
+impl<Item: AsRef<[u8]>> futures::sink::Sink<Item> for CRC32Sink<Item> {
     type Error = anyhow::Error;
 
     fn poll_ready(
@@ -60,7 +54,7 @@ impl<'a, Item: AsRef<[u8]>> futures::sink::Sink<Item> for CRC32Sink<'a, Item> {
     }
 
     fn start_send(
-        self: Pin<&mut CRC32Sink<'a, Item>>,
+        self: Pin<&mut CRC32Sink<Item>>,
         item: Item,
     ) -> std::result::Result<(), Self::Error> {
         let mut this = self.project();
@@ -84,7 +78,7 @@ impl<'a, Item: AsRef<[u8]>> futures::sink::Sink<Item> for CRC32Sink<'a, Item> {
     }
 
     fn poll_close(
-        mut self: Pin<&mut CRC32Sink<'a, Item>>,
+        mut self: Pin<&mut CRC32Sink<Item>>,
         _cx: &mut Context<'_>,
     ) -> Poll<std::result::Result<(), Self::Error>> {
         match std::mem::take(&mut self.digest) {
@@ -97,7 +91,7 @@ impl<'a, Item: AsRef<[u8]>> futures::sink::Sink<Item> for CRC32Sink<'a, Item> {
     }
 }
 
-impl<'a> AsyncWrite for CRC32Sink<'a, &[u8]> {
+impl AsyncWrite for CRC32Sink<&[u8]> {
     fn poll_write(
         self: Pin<&mut Self>,
         _: &mut Context<'_>,

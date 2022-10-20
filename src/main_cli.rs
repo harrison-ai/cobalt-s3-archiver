@@ -1,7 +1,7 @@
 use anyhow::{ensure, Result};
 use aws_sdk_s3::Client;
 use bytesize::ByteSize;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use cobalt_aws::config;
 use s3_archiver::{Compression, S3Object};
 use std::io::{BufRead, BufReader};
@@ -60,6 +60,21 @@ struct ValidateCommand {
     manifest_file: S3Object,
     /// S3 ZIP file location `s3://{bucket}/{key}`
     zip_file: S3Object,
+    #[clap(
+        value_enum,
+        default_value = "bytes",
+        short = 'v',
+        help = "Type of validation to apply to the CRC32"
+    )]
+    crc32_validation_type: CRC32ValidationType,
+}
+
+#[derive(Debug, Clone, ValueEnum, Copy, PartialEq, Eq)]
+enum CRC32ValidationType {
+    /// Calculate the CRC32 again from the bytes in the ZIP.
+    Bytes,
+    /// Read teh CRC32 from the ZIP central directory.
+    CentralDirectory,
 }
 
 #[tokio::main]
@@ -73,9 +88,16 @@ async fn main() -> Result<()> {
         Command::Archive(cmd) => {
             create_zip_from_read(&client, &mut BufReader::new(std::io::stdin()), &cmd).await
         }
-        Command::Validate(cmd) => {
-            s3_archiver::validate_zip(&client, &cmd.manifest_file, &cmd.zip_file).await
-        }
+        Command::Validate(cmd) => match cmd.crc32_validation_type {
+            CRC32ValidationType::Bytes => {
+                s3_archiver::validate_zip_entry_bytes(&client, &cmd.manifest_file, &cmd.zip_file)
+                    .await
+            }
+            CRC32ValidationType::CentralDirectory => {
+                s3_archiver::validate_zip_central_dir(&client, &cmd.manifest_file, &cmd.zip_file)
+                    .await
+            }
+        },
     }
 }
 

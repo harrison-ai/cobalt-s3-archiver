@@ -400,14 +400,13 @@ impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
         cx: &mut Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-
         if self.position >= self.length {
-            return Poll::Ready(Ok(()))
+            return Poll::Ready(Ok(()));
         }
         use S3SeekState::*;
         match &mut self.state {
             Pending => {
-                //TODO: How to handle reads beyond end of object?
+                println!("New fetch");
                 let request = self
                     .client
                     .get_object()
@@ -433,13 +432,13 @@ impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
                 match Pin::new(read).poll_read(cx, buf) {
                     Poll::Ready(Ok(())) => {
                         let bytes_read = buf.filled().len() - previous;
-                        self.position += u64::try_from(bytes_read).map_err(|e|Error::new(ErrorKind::Other, e))?;
+                        self.position += u64::try_from(bytes_read)
+                            .map_err(|e| Error::new(ErrorKind::Other, e))?;
                         Poll::Ready(Ok(()))
                     }
-                    other => other
-
+                    other => other,
                 }
-            }, // Poll Future and move to Pending
+            } // Poll Future and move to Pending
         }
     }
 }
@@ -448,25 +447,19 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
     fn start_seek(mut self: Pin<&mut Self>, position: std::io::SeekFrom) -> std::io::Result<()> {
         //Set State to Pending and calculate current possition
         use std::io::SeekFrom::*;
-        match position {
+
+        let new_pos = match position {
             //u64 but S3 API only allow i64
-            Start(p) => {
-                self.position = p;
-                self.state = S3SeekState::Pending;
-                Ok(())
-            }
+            Start(p) => p,
             End(p) => {
-                let new_pos = (i128::from(self.length) - 1)
+                let new_pos = i128::from(self.length)
                     .checked_add(p.into())
-                    .with_context(|| format!("Overflow {} + {p}", i128::from(self.length) - 1))
+                    .with_context(|| format!("Overflow {} + {p}", self.length))
                     .map_err(|e| Error::new(ErrorKind::Other, e))?;
                 if new_pos < 0 {
                     return Err(Error::new(ErrorKind::Other, "Start Seek less than zero "));
                 }
-                self.position =
-                    u64::try_from(new_pos).map_err(|e| Error::new(ErrorKind::Other, e))?;
-                self.state = S3SeekState::Pending;
-                Ok(())
+                u64::try_from(new_pos).map_err(|e| Error::new(ErrorKind::Other, e))?
             }
             Current(p) => {
                 let new_pos = i128::from(self.position)
@@ -474,16 +467,25 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
                     .with_context(|| format!("Overflow {} + {p}", self.position))
                     .map_err(|e| Error::new(ErrorKind::Other, e))?;
                 if new_pos < 0 {
-                    return Err(Error::new(ErrorKind::Other, "Start Seek less than zero "));
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        "Seek to position less than zero ",
+                    ));
                 }
-                self.position =
-                    u64::try_from(new_pos).map_err(|e| Error::new(ErrorKind::Other, e))?;
-                self.state = S3SeekState::Pending;
-                Ok(())
+                u64::try_from(new_pos).map_err(|e| Error::new(ErrorKind::Other, e))?
             }
-        }
-    }
+        };
 
+        println!("in {position:?}, old {} new {new_pos}", self.position);
+
+        //Only trigger an S3 request if position has changed
+        if new_pos != self.position + 1 {
+            self.position = new_pos;
+            self.state = S3SeekState::Pending
+        };
+
+        Ok(())
+    }
 
     fn poll_complete(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<u64>> {
         Poll::Ready(Ok(self.position))

@@ -129,7 +129,6 @@ pub mod fixtures {
     use aws_sdk_s3::types::SdkError;
     use aws_sdk_s3::Client;
     use bytesize::MIB;
-    use crc::{Crc, CRC_32_ISCSI};
     use rand::distributions::{Alphanumeric, DistString};
     use rand::Rng;
     use rand::SeedableRng;
@@ -138,8 +137,6 @@ pub mod fixtures {
     use s3_archiver::{Compression, S3Object};
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-
-    const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
     pub async fn create_bucket(client: &Client, bucket: &str) -> Result<()> {
         client.create_bucket().bucket(bucket).send().await?;
@@ -279,7 +276,7 @@ pub mod fixtures {
     }
 
     pub async fn object_crc32(client: &Client, obj: &S3Object) -> Result<u32> {
-        Ok(CASTAGNOLI.checksum(&fetch_bytes(client, obj).await?))
+        Ok(crc32fast::hash(&fetch_bytes(client, obj).await?))
     }
 
     pub async fn zip_entry_crc32<R>(entry_reader: ZipEntryReader<'_, R>) -> Result<u32>
@@ -287,7 +284,7 @@ pub mod fixtures {
         R: tokio::io::AsyncRead + core::marker::Unpin,
     {
         let file_bytes = entry_reader.read_to_end_crc().await?;
-        Ok(CASTAGNOLI.checksum(&file_bytes))
+        Ok(crc32fast::hash(&file_bytes))
     }
 
     #[derive(Debug)]
