@@ -268,7 +268,7 @@ async fn test_validate_compressed_zip() {
     let compressions = vec![Deflate, Bzip, Lzma, Zstd, Xz];
     for compression in compressions {
         let args = fixtures::CheckZipArgs {
-             compression,
+            compression,
             ..fixtures::CheckZipArgs::seeded_args(&mut rng, 10, None)
         };
 
