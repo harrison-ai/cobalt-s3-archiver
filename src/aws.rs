@@ -452,6 +452,7 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
             //u64 but S3 API only allow i64
             Start(p) => p,
             End(p) => {
+                //Adding an i64 to a u64 may overflow so use an i128
                 let new_pos = i128::from(self.length)
                     .checked_add(p.into())
                     .with_context(|| format!("Overflow {} + {p}", self.length))
@@ -462,6 +463,7 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
                 u64::try_from(new_pos).map_err(|e| Error::new(ErrorKind::Other, e))?
             }
             Current(p) => {
+                //Adding an i64 to a u64 may overflow so use an i128
                 let new_pos = i128::from(self.position)
                     .checked_add(p.into())
                     .with_context(|| format!("Overflow {} + {p}", self.position))

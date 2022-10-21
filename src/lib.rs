@@ -395,7 +395,7 @@ pub async fn validate_zip_entry_bytes(
             .map_err(|_| anyhow::Error::msg("Failed to "))
             .await??;
             sink.shutdown().await?;
-            validate_manifest(
+            validate_manifest_entry(
                 &manifest_entry,
                 &entry_name,
                 sink.into_inner()
@@ -408,7 +408,7 @@ pub async fn validate_zip_entry_bytes(
     Ok(())
 }
 
-fn validate_manifest(manifest_entry: &ManifestEntry, filename: &str, crc32: u32) -> Result<()> {
+fn validate_manifest_entry(manifest_entry: &ManifestEntry, filename: &str, crc32: u32) -> Result<()> {
     ensure!(
         manifest_entry.filename_in_zip == filename,
         format!(
@@ -450,7 +450,7 @@ pub async fn validate_zip_central_dir(
             .await?
             .context("Manifest has too few entries")
             .and_then(|l| serde_json::from_str::<ManifestEntry>(&l).map_err(anyhow::Error::from))?;
-        validate_manifest(&manifest_entry, entry.filename(), entry.crc32())?
+        validate_manifest_entry(&manifest_entry, entry.filename(), entry.crc32())?
     }
     Ok(())
 }
