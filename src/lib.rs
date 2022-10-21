@@ -408,7 +408,11 @@ pub async fn validate_zip_entry_bytes(
     Ok(())
 }
 
-fn validate_manifest_entry(manifest_entry: &ManifestEntry, filename: &str, crc32: u32) -> Result<()> {
+fn validate_manifest_entry(
+    manifest_entry: &ManifestEntry,
+    filename: &str,
+    crc32: u32,
+) -> Result<()> {
     ensure!(
         manifest_entry.filename_in_zip == filename,
         format!(
