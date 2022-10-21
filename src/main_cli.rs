@@ -53,9 +53,9 @@ struct ArchiveCommand {
     )]
     auto_manifest: bool,
     /// Keep memory usage constant by streaming the input files
-    /// but generate data descriptors for each file. 
+    /// but generate data descriptors for each file.
     /// Some tools can not read ZIP files using data descriptors.
-    #[clap(short = 'd', long="data-descriptors")]
+    #[clap(short = 'd', long = "data-descriptors")]
     data_descriptors: bool,
 }
 
