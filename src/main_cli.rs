@@ -52,6 +52,11 @@ struct ArchiveCommand {
         conflicts_with = "manifest_object"
     )]
     auto_manifest: bool,
+    /// Keep memory usage constant by streaming the input files
+    /// but generate data descriptors for each file. 
+    /// Some tools can not read ZIP files using data descriptors.
+    #[clap(short = 'd', long="data-descriptors")]
+    data_descriptors: bool,
 }
 
 #[derive(Parser, Debug, PartialEq, Clone)]
@@ -124,6 +129,7 @@ async fn create_zip_from_read(
         .compression(args.compression)
         .part_size(usize::try_from(args.part_size.as_u64())?)
         .src_fetch_buffer(args.src_fetch_concurrency)
+        .data_descriptors(args.data_descriptors)
         .build();
 
     let manifest_file = if args.auto_manifest {

@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 use std::task::Poll;
 
 use crc32fast::Hasher;
-use futures::AsyncWrite;
+use futures::prelude::*;
 use pin_project_lite::pin_project;
 use std::pin::Pin;
 use std::task::Context;
@@ -138,7 +138,6 @@ impl AsyncWrite for CRC32Sink<&[u8]> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::prelude::*;
 
     #[tokio::test]
     async fn test_crc32() {

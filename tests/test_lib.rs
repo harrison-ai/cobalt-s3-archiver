@@ -258,14 +258,14 @@ async fn test_check_zip_with_prefix_that_does_not_end_with_slash() {
 
 #[tokio::test]
 #[named]
-async fn test_validate_compressed_zip() {
+async fn test_validate_zip_entry_whole_file() {
     let test_client = S3TestClient::default();
     let (_container, s3_client) = test_client.client().await;
 
     let mut rng = fixtures::seeded_rng(function_name!());
 
     use Compression::*;
-    let compressions = vec![Deflate, Bzip, Lzma, Zstd, Xz];
+    let compressions = vec![Deflate, Bzip, Lzma, Zstd, Xz, Stored];
     for compression in compressions {
         let args = fixtures::CheckZipArgs {
             compression,
@@ -294,31 +294,42 @@ async fn test_validate_compressed_zip() {
 
 #[tokio::test]
 #[named]
-async fn test_validate_store_zip() {
+async fn test_validate_zip_entry_streamed_file() {
     let test_client = S3TestClient::default();
     let (_container, s3_client) = test_client.client().await;
 
     let mut rng = fixtures::seeded_rng(function_name!());
-    let args = fixtures::CheckZipArgs {
-        ..fixtures::CheckZipArgs::seeded_args(&mut rng, 10, None)
-    };
 
-    //This fails because it is set to store
-    fixtures::create_and_validate_zip(&s3_client, &args)
+    use Compression::*;
+    let compressions = vec![Deflate, Bzip, Lzma, Zstd, Xz, Stored];
+    for compression in compressions {
+        let args = fixtures::CheckZipArgs {
+            data_descriptors: true,
+            compression,
+            ..fixtures::CheckZipArgs::seeded_args(&mut rng, 10, None)
+        };
+
+        fixtures::create_and_validate_zip(&s3_client, &args)
+            .await
+            .expect("Error creating and validating with {compression:?}");
+        let bytes_result = s3_archiver::validate_zip_entry_bytes(
+            &s3_client,
+            args.manifest_file.as_ref().unwrap(),
+            &args.dst_obj,
+        )
+        .await;
+
+        match compression {
+            Stored => assert!(bytes_result.is_err(), "Streaming read of zip with no compression written with Data Descriptions should fail"),
+            _ => assert!(bytes_result.is_ok(), "Streaming read of zip with {compression:?} entries written with Data Descriptions should not fail")
+       }
+
+        s3_archiver::validate_zip_central_dir(
+            &s3_client,
+            args.manifest_file.as_ref().unwrap(),
+            &args.dst_obj,
+        )
         .await
-        .unwrap();
-    assert!(s3_archiver::validate_zip_entry_bytes(
-        &s3_client,
-        args.manifest_file.as_ref().unwrap(),
-        &args.dst_obj
-    )
-    .await
-    .is_err());
-    s3_archiver::validate_zip_central_dir(
-        &s3_client,
-        args.manifest_file.as_ref().unwrap(),
-        &args.dst_obj,
-    )
-    .await
-    .unwrap();
+        .expect("Error creating and validating zip entry central-directory {compression:?}");
+    }
 }
