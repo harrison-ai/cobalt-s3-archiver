@@ -438,7 +438,7 @@ impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
                     }
                     other => other,
                 }
-            } // Poll Future and move to Pending
+            }
         }
     }
 }
