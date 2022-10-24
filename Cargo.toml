@@ -39,7 +39,7 @@ name = "s3_archiver"
 path = "src/lib.rs"
 
 [dev-dependencies]
-assert_cmd = "2.0.4"
+assert_cmd = "2.0.5"
 function_name = "0.3.0"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
