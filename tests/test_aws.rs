@@ -1,19 +1,17 @@
 pub mod common;
 
+use std::io::SeekFrom;
+
 use ::function_name::named;
+use bytesize::MIB;
 use common::aws::S3TestClient;
 use common::fixtures;
-#[cfg(feature = "test_containers")]
-use futures::lock::Mutex;
 use futures::prelude::*;
-#[cfg(feature = "test_containers")]
-use futures::stream;
-use s3_archiver::aws::AsyncMultipartUpload;
+use s3_archiver::aws::{AsyncMultipartUpload, S3ObjectSeekableRead};
 use s3_archiver::S3Object;
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 #[cfg(feature = "test_containers")]
-use std::sync::Arc;
-
-use bytesize::MIB;
+use {futures::lock::Mutex, futures::stream, std::sync::Arc};
 
 #[tokio::test]
 #[named]
@@ -199,4 +197,102 @@ async fn test_fail_close() {
     drop(container);
     upload.write_all(&vec![0; data_len]).await.unwrap();
     assert!(upload.close().await.is_err());
+}
+
+#[tokio::test]
+#[named]
+async fn test_s3objectseekableread() {
+    let test_client = S3TestClient::default();
+    let (_container, client) = test_client.client().await;
+    let test_bucket = "test-bucket";
+    let mut rng = fixtures::seeded_rng(function_name!());
+    let dst_key = fixtures::gen_random_file_name(&mut rng);
+
+    fixtures::create_bucket(&client, test_bucket).await.unwrap();
+
+    let mut upload =
+        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
+            .await
+            .unwrap();
+
+    let data_len = 6 * MIB as usize;
+    upload.write_all(&vec![0; data_len]).await.unwrap();
+    upload.close().await.unwrap();
+
+    let dst_obj = S3Object::new(&test_bucket, &dst_key);
+    let mut read = S3ObjectSeekableRead::new(&client, &dst_obj).await.unwrap();
+
+    let mut buff = std::io::Cursor::new(vec![]);
+    let count_read = tokio::io::copy(&mut read, &mut buff).await.unwrap();
+
+    assert_eq!(data_len, count_read as usize);
+}
+
+#[tokio::test]
+#[named]
+async fn test_s3objectseekableread_seek() {
+    let test_client = S3TestClient::default();
+    let (_container, client) = test_client.client().await;
+    let test_bucket = "test-bucket";
+    let mut rng = fixtures::seeded_rng(function_name!());
+    let dst_key = fixtures::gen_random_file_name(&mut rng);
+
+    fixtures::create_bucket(&client, test_bucket).await.unwrap();
+
+    let mut upload =
+        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
+            .await
+            .unwrap();
+
+    let data_len = 6 * MIB as usize;
+    upload.write_all(&vec![0; data_len]).await.unwrap();
+    upload.close().await.unwrap();
+
+    let dst_obj = S3Object::new(&test_bucket, &dst_key);
+    let mut read = S3ObjectSeekableRead::new(&client, &dst_obj).await.unwrap();
+
+    read.seek(SeekFrom::Start(MIB)).await.unwrap();
+
+    let mut buff = std::io::Cursor::new(vec![]);
+    let count_read = tokio::io::copy(&mut read, &mut buff).await.unwrap();
+
+    assert_eq!(data_len - MIB as usize, count_read as usize);
+}
+
+#[tokio::test]
+#[named]
+async fn test_s3objectseekableread_seek_jump() {
+    let test_client = S3TestClient::default();
+    let (_container, client) = test_client.client().await;
+    let test_bucket = "test-bucket";
+    let mut rng = fixtures::seeded_rng(function_name!());
+    let dst_key = fixtures::gen_random_file_name(&mut rng);
+
+    fixtures::create_bucket(&client, test_bucket).await.unwrap();
+
+    let mut upload =
+        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
+            .await
+            .unwrap();
+
+    let data_len = 6 * MIB as usize;
+    upload.write_all(&vec![0; data_len]).await.unwrap();
+    upload.close().await.unwrap();
+
+    let dst_obj = S3Object::new(&test_bucket, &dst_key);
+    let mut read = S3ObjectSeekableRead::new(&client, &dst_obj).await.unwrap();
+
+    read.seek(SeekFrom::Start(MIB)).await.unwrap();
+    //Arrays are allocated on the stack
+    let mut tmp_buf = Box::new([1_u8; MIB as usize]);
+    read.read_exact(tmp_buf.as_mut()).await.unwrap();
+
+    read.seek(SeekFrom::End(-i64::try_from(MIB).unwrap()))
+        .await
+        .unwrap();
+
+    let mut buff = std::io::Cursor::new(vec![]);
+    let count_read = tokio::io::copy(&mut read, &mut buff).await.unwrap();
+
+    assert_eq!(MIB as usize, count_read as usize);
 }

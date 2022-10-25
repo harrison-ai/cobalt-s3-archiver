@@ -1,8 +1,9 @@
-use aws_sdk_s3::error::{CompleteMultipartUploadError, UploadPartError};
+use anyhow::Context as anyContext;
+use aws_sdk_s3::error::{CompleteMultipartUploadError, GetObjectError, UploadPartError};
 use aws_sdk_s3::model::CompletedMultipartUpload;
 use aws_sdk_s3::model::CompletedPart;
 use aws_sdk_s3::model::ObjectCannedAcl;
-use aws_sdk_s3::output::{CompleteMultipartUploadOutput, UploadPartOutput};
+use aws_sdk_s3::output::{CompleteMultipartUploadOutput, GetObjectOutput, UploadPartOutput};
 use aws_sdk_s3::types::{ByteStream, SdkError};
 use bytesize::{GIB, MIB};
 use futures::future::BoxFuture;
@@ -11,8 +12,11 @@ use futures::task::{Context, Poll};
 use futures::{ready, AsyncWrite, Future, FutureExt, TryFutureExt};
 use std::mem;
 use std::pin::Pin;
+use tokio::io::{AsyncRead, AsyncSeek};
 
 use aws_sdk_s3::Client;
+
+use crate::S3Object;
 
 type MultipartUploadFuture<'a> =
     BoxFuture<'a, Result<(UploadPartOutput, i32), SdkError<UploadPartError>>>;
@@ -342,6 +346,151 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 "Attempted to .close() writer after .close().",
             ))),
         }
+    }
+}
+
+type GetObjectFuture<'a> = BoxFuture<'a, Result<GetObjectOutput, SdkError<GetObjectError>>>;
+
+pub struct S3ObjectSeekableRead<'a> {
+    client: &'a Client,
+    src: &'a S3Object,
+    position: u64,
+    length: u64,
+    state: S3SeekState<'a>,
+}
+
+impl<'a> S3ObjectSeekableRead<'a> {
+    pub async fn new(
+        client: &'a Client,
+        src: &'a S3Object,
+    ) -> anyhow::Result<S3ObjectSeekableRead<'a>> {
+        let length = client
+            .head_object()
+            .bucket(&src.bucket)
+            .key(&src.key)
+            .send()
+            .map_ok(|i| i.content_length())
+            .map_ok(u64::try_from)
+            .await??; //Is there a better way to flatten this?
+        Ok(Self {
+            client,
+            src,
+            position: 0,
+            length,
+            state: S3SeekState::default(),
+        })
+    }
+}
+
+enum S3SeekState<'a> {
+    Pending,
+    Fetching(GetObjectFuture<'a>),
+    Reading(Pin<Box<dyn AsyncRead>>),
+}
+
+impl<'a> Default for S3SeekState<'a> {
+    fn default() -> Self {
+        Self::Pending
+    }
+}
+
+impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        if self.position >= self.length {
+            return Poll::Ready(Ok(()));
+        }
+        use S3SeekState::*;
+        match &mut self.state {
+            Pending => {
+                println!("New fetch");
+                let request = self
+                    .client
+                    .get_object()
+                    .bucket(&self.src.bucket)
+                    .key(&self.src.key)
+                    .range(format!("bytes={}-", self.position))
+                    .send();
+                self.state = Fetching(Box::pin(request));
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+            Fetching(request) => match Pin::new(request).poll(cx) {
+                Poll::Pending => Poll::Pending,
+                Poll::Ready(Ok(response)) => {
+                    self.state = Reading(Box::pin(response.body.into_async_read()));
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                }
+                Poll::Ready(Err(e)) => Poll::Ready(Err(Error::new(ErrorKind::Other, e))),
+            },
+            Reading(read) => {
+                let previous = buf.filled().len();
+                match Pin::new(read).poll_read(cx, buf) {
+                    Poll::Ready(Ok(())) => {
+                        let bytes_read = buf.filled().len() - previous;
+                        self.position += u64::try_from(bytes_read)
+                            .map_err(|e| Error::new(ErrorKind::Other, e))?;
+                        Poll::Ready(Ok(()))
+                    }
+                    other => other,
+                }
+            }
+        }
+    }
+}
+
+impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
+    fn start_seek(mut self: Pin<&mut Self>, position: std::io::SeekFrom) -> std::io::Result<()> {
+        //Set State to Pending and calculate current possition
+        use std::io::SeekFrom::*;
+
+        let new_pos = match position {
+            //u64 but S3 API only allow i64
+            Start(p) => p,
+            End(p) => {
+                //Adding an i64 to a u64 may overflow so use an i128
+                let new_pos = i128::from(self.length)
+                    .checked_add(p.into())
+                    .with_context(|| format!("Overflow {} + {p}", self.length))
+                    .map_err(|e| Error::new(ErrorKind::Other, e))?;
+                if new_pos < 0 {
+                    return Err(Error::new(ErrorKind::Other, "Start Seek less than zero "));
+                }
+                u64::try_from(new_pos).map_err(|e| Error::new(ErrorKind::Other, e))?
+            }
+            Current(p) => {
+                //Adding an i64 to a u64 may overflow so use an i128
+                let new_pos = i128::from(self.position)
+                    .checked_add(p.into())
+                    .with_context(|| format!("Overflow {} + {p}", self.position))
+                    .map_err(|e| Error::new(ErrorKind::Other, e))?;
+                if new_pos < 0 {
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        "Seek to position less than zero ",
+                    ));
+                }
+                u64::try_from(new_pos).map_err(|e| Error::new(ErrorKind::Other, e))?
+            }
+        };
+
+        println!("in {position:?}, old {} new {new_pos}", self.position);
+
+        //Only trigger an S3 request if position has changed
+        if new_pos != self.position + 1 {
+            self.position = new_pos;
+            self.state = S3SeekState::Pending
+        };
+
+        Ok(())
+    }
+
+    fn poll_complete(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<u64>> {
+        Poll::Ready(Ok(self.position))
     }
 }
 

@@ -1,13 +1,27 @@
 use anyhow::{ensure, Result};
 use aws_sdk_s3::Client;
 use bytesize::ByteSize;
-use clap::Parser;
+use clap::{Parser, Subcommand, ValueEnum};
 use cobalt_aws::config;
 use s3_archiver::{Compression, S3Object};
 use std::io::{BufRead, BufReader};
 
-#[derive(Parser, Debug, PartialEq, Eq)]
+#[derive(Parser, Debug, PartialEq, Clone)]
 struct Args {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand, Debug, PartialEq, Clone)]
+enum Command {
+    ///Create an ZIP archive in S3 from source files in S3.
+    Archive(ArchiveCommand),
+    ///Validate a ZIP archvie matches the given manifest.
+    Validate(ValidateCommand),
+}
+
+#[derive(Parser, Debug, PartialEq, Clone)]
+struct ArchiveCommand {
     /// S3 output location `s3://{bucket}/{key}`
     output_location: S3Object,
     #[clap(
@@ -38,6 +52,34 @@ struct Args {
         conflicts_with = "manifest_object"
     )]
     auto_manifest: bool,
+    /// Keep memory usage constant by streaming the input files
+    /// but generate data descriptors for each file.
+    /// Some tools can not read ZIP files using data descriptors.
+    #[clap(short = 'd', long = "data-descriptors")]
+    data_descriptors: bool,
+}
+
+#[derive(Parser, Debug, PartialEq, Clone)]
+struct ValidateCommand {
+    /// S3 manifest location `s3://{bucket}/{key}`
+    manifest_file: S3Object,
+    /// S3 ZIP file location `s3://{bucket}/{key}`
+    zip_file: S3Object,
+    #[clap(
+        value_enum,
+        default_value = "bytes",
+        short = 'v',
+        help = "Type of validation to apply to the CRC32"
+    )]
+    crc32_validation_type: CRC32ValidationType,
+}
+
+#[derive(Debug, Clone, ValueEnum, Copy, PartialEq, Eq)]
+enum CRC32ValidationType {
+    /// Calculate the CRC32 again from the bytes in the ZIP.
+    Bytes,
+    /// Read teh CRC32 from the ZIP central directory.
+    CentralDirectory,
 }
 
 #[tokio::main]
@@ -47,13 +89,37 @@ async fn main() -> Result<()> {
     let config = config::load_from_env().await?;
     let client = Client::new(&config);
 
-    create_zip_from_read(&client, &mut BufReader::new(std::io::stdin()), &args).await
+    match args.command {
+        Command::Archive(cmd) => {
+            create_zip_from_read(&client, &mut BufReader::new(std::io::stdin()), &cmd).await
+        }
+        Command::Validate(cmd) => match cmd.crc32_validation_type {
+            CRC32ValidationType::Bytes => {
+                s3_archiver::validate_zip_entry_bytes(&client, &cmd.manifest_file, &cmd.zip_file)
+                    .await?;
+                println!(
+                    "The input archive {:?} bytes matched the manifest {:?}",
+                    &cmd.zip_file, &cmd.manifest_file
+                );
+                Ok(())
+            }
+            CRC32ValidationType::CentralDirectory => {
+                s3_archiver::validate_zip_central_dir(&client, &cmd.manifest_file, &cmd.zip_file)
+                    .await?;
+                println!(
+                    "The input archive {:?} central directory matched the manifest {:?}",
+                    &cmd.zip_file, &cmd.manifest_file
+                );
+                Ok(())
+            }
+        },
+    }
 }
 
 async fn create_zip_from_read(
     client: &Client,
     input: &mut impl BufRead,
-    args: &Args,
+    args: &ArchiveCommand,
 ) -> Result<()> {
     ensure!(
         args.manifest_object
@@ -73,6 +139,7 @@ async fn create_zip_from_read(
         .compression(args.compression)
         .part_size(usize::try_from(args.part_size.as_u64())?)
         .src_fetch_buffer(args.src_fetch_concurrency)
+        .data_descriptors(args.data_descriptors)
         .build();
 
     let manifest_file = if args.auto_manifest {
@@ -101,7 +168,7 @@ mod test {
     use super::*;
     #[test]
     fn test_arg_parser_happy() {
-        let result = Args::try_parse_from(vec!["prog", "s3://output/zip"]);
+        let result = Args::try_parse_from(vec!["prog", "archive", "s3://output/zip"]);
         assert!(result.is_ok());
     }
 
@@ -109,6 +176,7 @@ mod test {
     fn test_arg_parser_manifest_and_generate() {
         let result = Args::try_parse_from(vec![
             "prog",
+            "archive",
             "s3://output/zip",
             "-m",
             "s3://output/manifest",
@@ -120,7 +188,7 @@ mod test {
 
     #[test]
     fn test_arg_parser_invalid_s3_url() {
-        let result = Args::try_parse_from(vec!["prog", "output/zip"]);
+        let result = Args::try_parse_from(vec!["prog", "archive", "output/zip"]);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), ErrorKind::ValueValidation);
     }

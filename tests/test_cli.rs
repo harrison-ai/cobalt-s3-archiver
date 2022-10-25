@@ -58,6 +58,7 @@ async fn test_cli_run() {
         .await
         .unwrap();
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("archive");
     cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
     cmd.write_stdin(
         src_objs
@@ -100,6 +101,7 @@ async fn test_cli_run_with_size() {
         .await
         .unwrap();
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("archive");
     cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
     cmd.arg("-s").arg("5MiB");
     cmd.write_stdin(
@@ -144,6 +146,7 @@ async fn test_cli_run_with_src_fetch_buffer() {
         .await
         .unwrap();
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("archive");
     cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
     cmd.arg("-f").arg("10");
     cmd.write_stdin(
@@ -190,7 +193,7 @@ async fn test_cli_run_with_src_manifest() {
     let manifest_key = fixtures::gen_random_file_name(&mut rng);
     let manifest_obj = s3_archiver::S3Object::new("dst-bucket", &manifest_key);
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
-
+    cmd.arg("archive");
     cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
     cmd.arg("-m")
         .arg(url::Url::try_from(&manifest_obj).unwrap().as_str());
@@ -222,12 +225,15 @@ async fn test_cli_run_with_src_manifest() {
 #[test]
 fn test_cli_no_args() {
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("archive");
+
     cmd.assert().failure();
 }
 
 #[test]
 fn test_cli_invalid_dst_s3_url() {
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("archive");
     cmd.arg("not_valid_s3_url");
     cmd.assert().failure();
 }
@@ -246,6 +252,7 @@ async fn test_cli_no_trailing_slash_prefix() {
         .await
         .unwrap();
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("archive");
     cmd.arg("-p").arg("no_trailing_slash");
     cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
     cmd.envs(env);
@@ -266,6 +273,7 @@ async fn test_cli_has_leading_slash_prefix() {
         .await
         .unwrap();
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("archive");
     cmd.arg("-p").arg("/no_trailing_slash/");
     cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
     cmd.envs(env);
@@ -287,6 +295,7 @@ async fn test_invalid_s3_src() {
         .unwrap();
 
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("archive");
     cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
     cmd.envs(env);
     cmd.write_stdin("an_invalid_src_url");
@@ -308,6 +317,7 @@ async fn test_invalid_part_size_0b() {
         .unwrap();
 
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("archive");
     cmd.arg("-s").arg("0");
     cmd.arg(Url::try_from(dst_obj).unwrap().as_str());
     cmd.envs(env);
@@ -329,6 +339,7 @@ async fn test_invalid_part_size_1k() {
         .unwrap();
 
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("archive");
     cmd.arg("-s").arg("1K");
     cmd.arg(Url::try_from(dst_obj).unwrap().as_str());
     cmd.envs(env);
@@ -352,6 +363,7 @@ async fn test_manifest_file_and_generate() {
         .unwrap();
 
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("archive");
     cmd.arg("-m")
         .arg(Url::try_from(manifest_obj).unwrap().as_str());
     cmd.arg("-g");

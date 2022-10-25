@@ -129,7 +129,6 @@ pub mod fixtures {
     use aws_sdk_s3::types::SdkError;
     use aws_sdk_s3::Client;
     use bytesize::MIB;
-    use crc::{Crc, CRC_32_ISCSI};
     use rand::distributions::{Alphanumeric, DistString};
     use rand::Rng;
     use rand::SeedableRng;
@@ -138,8 +137,7 @@ pub mod fixtures {
     use s3_archiver::{Compression, S3Object};
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-
-    const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
+    use typed_builder::TypedBuilder;
 
     pub async fn create_bucket(client: &Client, bucket: &str) -> Result<()> {
         client.create_bucket().bucket(bucket).send().await?;
@@ -279,7 +277,7 @@ pub mod fixtures {
     }
 
     pub async fn object_crc32(client: &Client, obj: &S3Object) -> Result<u32> {
-        Ok(CASTAGNOLI.checksum(&fetch_bytes(client, obj).await?))
+        Ok(crc32fast::hash(&fetch_bytes(client, obj).await?))
     }
 
     pub async fn zip_entry_crc32<R>(entry_reader: ZipEntryReader<'_, R>) -> Result<u32>
@@ -287,10 +285,10 @@ pub mod fixtures {
         R: tokio::io::AsyncRead + core::marker::Unpin,
     {
         let file_bytes = entry_reader.read_to_end_crc().await?;
-        Ok(CASTAGNOLI.checksum(&file_bytes))
+        Ok(crc32fast::hash(&file_bytes))
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, TypedBuilder)]
     pub struct CheckZipArgs<'a> {
         pub dst_obj: S3Object,
         pub prefix_to_strip: Option<&'a str>,
@@ -298,30 +296,13 @@ pub mod fixtures {
         pub src_keys: Vec<String>,
         pub file_size: usize,
         pub compression: Compression,
+        #[builder(default = None)]
         pub manifest_file: Option<S3Object>,
+        #[builder(default = false)]
+        pub data_descriptors: bool,
     }
 
     impl<'a> CheckZipArgs<'a> {
-        pub fn new(
-            dst_obj: S3Object,
-            prefix_to_strip: Option<&'a str>,
-            src_bucket: &str,
-            src_keys: Vec<String>,
-            file_size: usize,
-            compression: Compression,
-            manifest_file: Option<S3Object>,
-        ) -> Self {
-            CheckZipArgs {
-                dst_obj,
-                prefix_to_strip,
-                src_bucket: src_bucket.into(),
-                src_keys,
-                file_size,
-                compression,
-                manifest_file,
-            }
-        }
-
         pub fn src_objs(&'a self) -> impl Iterator<Item = S3Object> + 'a {
             s3_object_from_keys(&self.src_bucket, &self.src_keys)
         }
@@ -348,15 +329,15 @@ pub mod fixtures {
             //gen_random_file_names(rng, src_file_count);
             let file_size = MIB as usize;
             let compression = Compression::Stored;
-            CheckZipArgs::new(
-                dst_obj,
-                prefix_to_strip,
-                src_bucket,
-                src_keys,
-                file_size,
-                compression,
-                Some(manifest_obj),
-            )
+            CheckZipArgs::builder()
+                .dst_obj(dst_obj)
+                .prefix_to_strip(prefix_to_strip)
+                .src_bucket(src_bucket.into())
+                .src_keys(src_keys)
+                .file_size(file_size)
+                .compression(compression)
+                .manifest_file(Some(manifest_obj))
+                .build()
         }
     }
 
@@ -371,16 +352,14 @@ pub mod fixtures {
                 .collect();
             let file_size = MIB as usize;
             let compression = Compression::Stored;
-
-            CheckZipArgs::new(
-                dst_obj,
-                prefix_to_strip,
-                src_bucket,
-                src_files,
-                file_size,
-                compression,
-                None,
-            )
+            CheckZipArgs::builder()
+                .dst_obj(dst_obj)
+                .prefix_to_strip(prefix_to_strip)
+                .src_bucket(src_bucket.into())
+                .src_keys(src_files)
+                .file_size(file_size)
+                .compression(compression)
+                .build()
         }
     }
 
@@ -410,6 +389,7 @@ pub mod fixtures {
         let archiver = s3_archiver::Archiver::builder()
             .prefix_strip(args.prefix_to_strip)
             .compression(args.compression)
+            .data_descriptors(args.data_descriptors)
             .build();
         archiver
             .create_zip(

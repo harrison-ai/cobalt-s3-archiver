@@ -18,7 +18,7 @@ use futures::lock::Mutex;
 use futures::prelude::*;
 use futures::stream;
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio_util::compat::FuturesAsyncWriteCompatExt;
 use typed_builder::TypedBuilder;
 use url::Url;
@@ -165,7 +165,13 @@ impl<'a> ManifestFileUpload<'a> {
     }
 }
 
-const CRC32: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_ISCSI);
+/// Type of write to do
+enum ZipWrite {
+    /// Stream the file into the Zip
+    Stream,
+    /// Read the entire file before writing into the Zip
+    Whole,
+}
 
 #[derive(Debug, TypedBuilder)]
 pub struct Archiver<'a> {
@@ -176,9 +182,19 @@ pub struct Archiver<'a> {
     part_size: usize,
     #[builder(default = 2)]
     src_fetch_buffer: usize,
+    #[builder(default = false)]
+    data_descriptors: bool,
 }
 
 impl<'a> Archiver<'a> {
+    fn entry_write_type(&self) -> ZipWrite {
+        if self.data_descriptors {
+            ZipWrite::Stream
+        } else {
+            ZipWrite::Whole
+        }
+    }
+
     pub async fn create_zip<I>(
         &self,
         client: &aws_sdk_s3::Client,
@@ -263,6 +279,7 @@ impl<'a> Archiver<'a> {
                     &mut *zip.lock().await,
                     response,
                     &entry_path,
+                    self.entry_write_type()
                 ).map_ok(|crc32| ManifestEntry::new(&src, crc32, &entry_path))
                 .await
             }
@@ -300,26 +317,146 @@ impl<'a> Archiver<'a> {
         zip: &mut async_zip::write::ZipFileWriter<T>,
         mut response: GetObjectOutput,
         entry_path: &str,
+        write_type: ZipWrite,
     ) -> Result<u32> {
         let opts = ZipEntryBuilder::new(entry_path.to_owned(), self.compression.into());
-        let mut entry_writer = zip.write_entry_stream(opts).await?;
 
         //crc is needed for validation
-        let mut crc_sink = CRC32Sink::new(&CRC32);
+        let mut crc_sink = CRC32Sink::default();
 
-        while let Some(bytes) = response.body.next().await {
-            let bytes = bytes?;
-            entry_writer.write_all(&bytes).await?;
-            crc_sink.send(bytes).await?;
+        match write_type {
+            ZipWrite::Stream => {
+                let mut entry_writer = zip.write_entry_stream(opts).await?;
+                while let Some(bytes) = response.body.next().await {
+                    let bytes = bytes?;
+                    entry_writer.write_all(&bytes).await?;
+                    crc_sink.send(bytes).await?;
+                }
+                // If this is not done the Zip file produced silently corrupts
+                entry_writer.close().await?;
+            }
+            ZipWrite::Whole => {
+                let bytes = response.body.collect().await?.into_bytes();
+                zip.write_entry_whole(opts, &bytes).await?;
+                crc_sink.send(bytes).await?;
+            }
         }
-        // If this is not done the Zip file produced silently corrupts
-        entry_writer.close().await?;
         crc_sink.close().await?;
         let crc = crc_sink
             .value()
             .context("Expected CRC Sink to have value")?;
         Ok(crc)
     }
+}
+
+pub async fn validate_zip_entry_bytes(
+    client: &aws_sdk_s3::Client,
+    manifest_file: &S3Object,
+    zip_file: &S3Object,
+) -> Result<()> {
+    let manifest_request = client
+        .get_object()
+        .bucket(&manifest_file.bucket)
+        .key(&manifest_file.key)
+        .send()
+        .map_ok(|r| r.body.into_async_read())
+        .map_ok(BufReader::new)
+        .map_ok(|b| b.lines());
+
+    let zip_request = client
+        .get_object()
+        .bucket(&zip_file.bucket)
+        .key(&zip_file.key)
+        .send()
+        .map_ok(|r| r.body.into_async_read());
+
+    let (manifest_lines, zip_response) = futures::join!(manifest_request, zip_request);
+    let mut manifest_lines = manifest_lines?;
+    let zip_response = zip_response?;
+
+    let mut zip_reader = async_zip::read::stream::ZipFileReader::new(zip_response);
+
+    while !zip_reader.finished() {
+        if let Some(reader) = zip_reader.entry_reader().await? {
+            let manifest_entry = manifest_lines
+                .next_line()
+                .await?
+                .context("Manifest has too few entries")
+                .and_then(|l| {
+                    serde_json::from_str::<ManifestEntry>(&l).map_err(anyhow::Error::from)
+                })?;
+            //Using the stream reader panics with Stored items
+            let entry_name = reader.entry().filename().to_owned();
+            let mut sink = FuturesAsyncWriteCompatExt::compat_write(CRC32Sink::default());
+            std::panic::AssertUnwindSafe(
+                reader.copy_to_end_crc(&mut sink, 64 * bytesize::KB as usize),
+            )
+            .catch_unwind()
+            .map_err(|_| anyhow::Error::msg("Failed to "))
+            .await??;
+            sink.shutdown().await?;
+            validate_manifest_entry(
+                &manifest_entry,
+                &entry_name,
+                sink.into_inner()
+                    .value()
+                    .context("Expected a crc32 value")?,
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_manifest_entry(
+    manifest_entry: &ManifestEntry,
+    filename: &str,
+    crc32: u32,
+) -> Result<()> {
+    ensure!(
+        manifest_entry.filename_in_zip == filename,
+        format!(
+            "Validation manifest entry filename {manifest_entry:?} did not match zip {filename}",
+        )
+    );
+    ensure!(
+        manifest_entry.crc32 == crc32,
+        format!("Validation error manifest entry {manifest_entry:?} crc32 did not match {crc32}",)
+    );
+    Ok(())
+}
+
+pub async fn validate_zip_central_dir(
+    client: &aws_sdk_s3::Client,
+    manifest_file: &S3Object,
+    zip_file: &S3Object,
+) -> Result<()> {
+    let manifest_request = client
+        .get_object()
+        .bucket(&manifest_file.bucket)
+        .key(&manifest_file.key)
+        .send()
+        .map_ok(|r| r.body.into_async_read())
+        .map_ok(BufReader::new)
+        .map_ok(|b| b.lines());
+
+    let zip_request = aws::S3ObjectSeekableRead::new(client, zip_file);
+
+    let (manifest_lines, zip_response) = futures::join!(manifest_request, zip_request);
+    let mut manifest_lines = manifest_lines?;
+    let zip_response = zip_response?;
+
+    let zip_reader = async_zip::read::seek::ZipFileReader::new(zip_response).await?;
+
+    for entry in zip_reader.entries() {
+        let manifest_entry = manifest_lines
+            .next_line()
+            .await?
+            .context("Manifest has too few entries")
+            .and_then(|l| serde_json::from_str::<ManifestEntry>(&l).map_err(anyhow::Error::from))?;
+        validate_manifest_entry(&manifest_entry, entry.filename(), entry.crc32())?
+    }
+    Ok(())
 }
 
 #[cfg(test)]
