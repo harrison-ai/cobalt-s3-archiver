@@ -360,7 +360,7 @@ pub async fn validate_zip_entry_bytes(
         .key(&manifest_file.key)
         .send()
         .map_ok(|r| r.body.into_async_read())
-        .map_ok(BufReader::new)
+        .map_ok(|r|BufReader::with_capacity(64 * bytesize::KB as usize, r))
         .map_ok(|b| b.lines());
 
     let zip_request = client
@@ -368,13 +368,13 @@ pub async fn validate_zip_entry_bytes(
         .bucket(&zip_file.bucket)
         .key(&zip_file.key)
         .send()
-        .map_ok(|r| r.body.into_async_read());
+        .map_ok(|r| r.body.into_async_read())
+        .map_ok(|r|BufReader::with_capacity(64 * bytesize::KB as usize, r));
 
     let (manifest_lines, zip_response) = futures::join!(manifest_request, zip_request);
     let mut manifest_lines = manifest_lines?;
-    let zip_response = zip_response?;
 
-    let mut zip_reader = async_zip::read::stream::ZipFileReader::new(zip_response);
+    let mut zip_reader = async_zip::read::stream::ZipFileReader::new(zip_response?);
 
     while !zip_reader.finished() {
         if let Some(reader) = zip_reader.entry_reader().await? {
