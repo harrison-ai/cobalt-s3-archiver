@@ -96,11 +96,21 @@ async fn main() -> Result<()> {
         Command::Validate(cmd) => match cmd.crc32_validation_type {
             CRC32ValidationType::Bytes => {
                 s3_archiver::validate_zip_entry_bytes(&client, &cmd.manifest_file, &cmd.zip_file)
-                    .await
+                    .await?;
+                println!(
+                    "The input archive {:?} bytes matched the manifest {:?}",
+                    &cmd.zip_file, &cmd.manifest_file
+                );
+                Ok(())
             }
             CRC32ValidationType::CentralDirectory => {
                 s3_archiver::validate_zip_central_dir(&client, &cmd.manifest_file, &cmd.zip_file)
-                    .await
+                    .await?;
+                println!(
+                    "The input archive {:?} central directory matched the manifest {:?}",
+                    &cmd.zip_file, &cmd.manifest_file
+                );
+                Ok(())
             }
         },
     }
