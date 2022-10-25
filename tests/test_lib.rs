@@ -302,6 +302,8 @@ async fn test_validate_zip_entry_streamed_file() {
 
     use Compression::*;
     let compressions = vec![Deflate, Bzip, Lzma, Zstd, Xz, Stored];
+
+    let mut durations: Vec<u128> = Vec::new();
     for compression in compressions {
         let args = fixtures::CheckZipArgs {
             data_descriptors: true,
@@ -312,16 +314,23 @@ async fn test_validate_zip_entry_streamed_file() {
         fixtures::create_and_validate_zip(&s3_client, &args)
             .await
             .expect("Error creating and validating with {compression:?}");
+        use std::time::Instant;
+
+        let start = Instant::now();
         let bytes_result = s3_archiver::validate_zip_entry_bytes(
             &s3_client,
             args.manifest_file.as_ref().unwrap(),
             &args.dst_obj,
         )
         .await;
+        let duration = start.elapsed();
 
         match compression {
             Stored => assert!(bytes_result.is_err(), "Streaming read of zip with no compression written with Data Descriptions should fail"),
-            _ => assert!(bytes_result.is_ok(), "Streaming read of zip with {compression:?} entries written with Data Descriptions should not fail")
+            _ => {
+                durations.push(duration.as_millis());
+                assert!(bytes_result.is_ok(), "Streaming read of zip with {compression:?} entries written with Data Descriptions should not fail");
+            }
        }
 
         s3_archiver::validate_zip_central_dir(
@@ -332,4 +341,8 @@ async fn test_validate_zip_entry_streamed_file() {
         .await
         .expect("Error creating and validating zip entry central-directory {compression:?}");
     }
+    println!(
+        "Average time is {:?}",
+        durations.iter().sum::<u128>() / u128::try_from(durations.len()).unwrap()
+    );
 }

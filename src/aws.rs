@@ -386,6 +386,8 @@ enum S3SeekState<'a> {
     Pending,
     Fetching(GetObjectFuture<'a>),
     Reading(Pin<Box<dyn AsyncRead>>),
+    Seeking(Pin<Box<dyn AsyncRead>>, u64),
+    None,
 }
 
 impl<'a> Default for S3SeekState<'a> {
@@ -419,13 +421,14 @@ impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
                 Poll::Pending
             }
             Fetching(request) => match Pin::new(request).poll(cx) {
-                Poll::Pending => Poll::Pending,
                 Poll::Ready(Ok(response)) => {
                     self.state = Reading(Box::pin(response.body.into_async_read()));
                     cx.waker().wake_by_ref();
                     Poll::Pending
                 }
-                Poll::Ready(Err(e)) => Poll::Ready(Err(Error::new(ErrorKind::Other, e))),
+                other => other
+                    .map_err(|e| Error::new(ErrorKind::Other, e))
+                    .map_ok(|_| ()),
             },
             Reading(read) => {
                 let previous = buf.filled().len();
@@ -439,6 +442,11 @@ impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
                     other => other,
                 }
             }
+            Seeking(_, _) => Poll::Ready(Err(Error::new(
+                ErrorKind::Other,
+                "Can not read while seeking.",
+            ))),
+            None => Poll::Ready(Err(Error::new(ErrorKind::Other, "Invalid State: None"))),
         }
     }
 }
@@ -480,17 +488,63 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
 
         println!("in {position:?}, old {} new {new_pos}", self.position);
 
-        //Only trigger an S3 request if position has changed
-        if new_pos != self.position + 1 {
-            self.position = new_pos;
+        let state = std::mem::replace(&mut self.state, S3SeekState::None);
+        // IS the new position within the seekable distance or should a new request be made?
+        let is_seekable_range = new_pos <= self.position + 5 * bytesize::MIB
+            && new_pos > self.position
+            && new_pos < self.length;
+        if new_pos == self.position {
+            self.state = state; // Nothing changes
+        } else if let (S3SeekState::Reading(f), true) = (state, is_seekable_range) {
+            println!("Setting state to seeking");
+            self.state = S3SeekState::Seeking(f, new_pos); // This will seek
+        } else {
+            self.position = new_pos; //Trigger a new fetch as this location
             self.state = S3SeekState::Pending
         };
 
         Ok(())
     }
 
-    fn poll_complete(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<u64>> {
-        Poll::Ready(Ok(self.position))
+    fn poll_complete(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<u64>> {
+        println!("poll_complete");
+        let state = std::mem::replace(&mut self.state, S3SeekState::None);
+        match state {
+            S3SeekState::None => Poll::Ready(Err(Error::new(
+                ErrorKind::Other,
+                "Invalid State: State should never be None",
+            ))),
+            S3SeekState::Seeking(mut read, target) => {
+                //Read forward to target
+                println!("poll_complete seeking");
+                let bytes_to_seek = usize::try_from(target - self.position)
+                    .map_err(|e| Error::new(ErrorKind::Other, e))?;
+                let mut backing = vec![0; bytes_to_seek];
+                let mut buf = tokio::io::ReadBuf::new(&mut backing);
+                match Pin::new(&mut read).poll_read(cx, &mut buf) {
+                    Poll::Ready(Ok(())) => {
+                        self.position += u64::try_from(buf.filled().len())
+                            .map_err(|e| Error::new(ErrorKind::Other, e))?;
+                        if self.position == target {
+                            println!("poll_complete target found");
+                            self.state = S3SeekState::Reading(read);
+                            Poll::Ready(Ok(self.position))
+                        } else {
+                            println!("poll_complete return pending");
+                            self.state = S3SeekState::Seeking(read, target);
+                            // The read had returned data so a wake needs to be triggerd
+                            cx.waker().wake_by_ref();
+                            Poll::Pending
+                        }
+                    }
+                    other => other.map_ok(|_| self.position),
+                }
+            }
+            _ => {
+                self.state = state;
+                Poll::Ready(Ok(self.position))
+            }
+        }
     }
 }
 
