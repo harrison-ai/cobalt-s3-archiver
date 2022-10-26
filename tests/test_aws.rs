@@ -220,7 +220,9 @@ async fn test_s3objectseekableread() {
     upload.close().await.unwrap();
 
     let dst_obj = S3Object::new(&test_bucket, &dst_key);
-    let mut read = S3ObjectSeekableRead::new(&client, &dst_obj).await.unwrap();
+    let mut read = S3ObjectSeekableRead::new(&client, &dst_obj, None)
+        .await
+        .unwrap();
 
     let mut buff = std::io::Cursor::new(vec![]);
     let count_read = tokio::io::copy(&mut read, &mut buff).await.unwrap();
@@ -249,7 +251,9 @@ async fn test_s3objectseekableread_seek() {
     upload.close().await.unwrap();
 
     let dst_obj = S3Object::new(&test_bucket, &dst_key);
-    let mut read = S3ObjectSeekableRead::new(&client, &dst_obj).await.unwrap();
+    let mut read = S3ObjectSeekableRead::new(&client, &dst_obj, None)
+        .await
+        .unwrap();
 
     read.seek(SeekFrom::Start(MIB)).await.unwrap();
 
@@ -280,7 +284,9 @@ async fn test_s3objectseekableread_seek_jump() {
     upload.close().await.unwrap();
 
     let dst_obj = S3Object::new(&test_bucket, &dst_key);
-    let mut read = S3ObjectSeekableRead::new(&client, &dst_obj).await.unwrap();
+    let mut read = S3ObjectSeekableRead::new(&client, &dst_obj, None)
+        .await
+        .unwrap();
 
     read.seek(SeekFrom::Start(MIB)).await.unwrap();
     //Arrays are allocated on the stack

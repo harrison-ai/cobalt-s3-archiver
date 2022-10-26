@@ -15,6 +15,7 @@ use std::pin::Pin;
 use tokio::io::{AsyncRead, AsyncSeek};
 
 use aws_sdk_s3::Client;
+use tracing::{event, instrument, Level};
 
 use crate::S3Object;
 
@@ -67,6 +68,7 @@ const MAX_PART_SIZE: usize = 5_usize * GIB as usize; // 5 Gib
 const DEFAULT_MAX_UPLOADING_PARTS: usize = 100;
 
 impl<'a> AsyncMultipartUpload<'a> {
+    #[instrument(skip(client))]
     pub async fn new(
         client: &'a Client,
         bucket: &'a str,
@@ -114,6 +116,7 @@ impl<'a> AsyncMultipartUpload<'a> {
         })
     }
 
+    #[instrument(level = "trace", skip(buffer))]
     fn upload_part<'b>(
         config: &AsyncMultipartUploadConfig,
         buffer: Vec<u8>,
@@ -146,6 +149,7 @@ impl<'a> AsyncMultipartUpload<'a> {
         complete
     }
 
+    #[instrument(level = "trace")]
     fn try_collect_complete_parts(
         complete_results: Vec<Result<(UploadPartOutput, i32), SdkError<UploadPartError>>>,
     ) -> Result<Vec<CompletedPart>, Error> {
@@ -163,6 +167,7 @@ impl<'a> AsyncMultipartUpload<'a> {
             .collect::<Result<Vec<_>, _>>()
     }
 
+    #[instrument(level = "trace")]
     fn complete_multipart_upload<'b>(
         config: &AsyncMultipartUploadConfig,
         completed_parts: Vec<CompletedPart>,
@@ -182,6 +187,7 @@ impl<'a> AsyncMultipartUpload<'a> {
             .boxed()
     }
 
+    #[instrument(level = "trace", skip(uploads))]
     fn check_uploads(
         uploads: &mut Vec<MultipartUploadFuture<'a>>,
         completed_parts: &mut Vec<CompletedPart>,
@@ -196,6 +202,7 @@ impl<'a> AsyncMultipartUpload<'a> {
 }
 
 impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
+    #[instrument(level = "trace", skip(self, cx, buf))]
     fn poll_write(
         mut self: Pin<&mut AsyncMultipartUpload<'a>>,
         cx: &mut Context<'_>,
@@ -250,6 +257,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
         }
     }
 
+    #[instrument(level = "trace", skip(self, cx))]
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         //Ensure all pending uploads are completed.
         match &mut self.state {
@@ -274,6 +282,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
         }
     }
 
+    #[instrument(level = "trace", skip(self, cx))]
     fn poll_close<'b>(
         mut self: Pin<&'b mut AsyncMultipartUpload<'a>>,
         cx: &'b mut Context<'_>,
@@ -356,13 +365,16 @@ pub struct S3ObjectSeekableRead<'a> {
     src: &'a S3Object,
     position: u64,
     length: u64,
+    bytes_before_fetch: u64,
     state: S3SeekState<'a>,
 }
 
 impl<'a> S3ObjectSeekableRead<'a> {
+    #[instrument(skip(client))]
     pub async fn new(
         client: &'a Client,
         src: &'a S3Object,
+        bytes_before_fetch: Option<u64>,
     ) -> anyhow::Result<S3ObjectSeekableRead<'a>> {
         let length = client
             .head_object()
@@ -377,6 +389,7 @@ impl<'a> S3ObjectSeekableRead<'a> {
             src,
             position: 0,
             length,
+            bytes_before_fetch: bytes_before_fetch.unwrap_or(5 * MIB),
             state: S3SeekState::default(),
         })
     }
@@ -397,6 +410,7 @@ impl<'a> Default for S3SeekState<'a> {
 }
 
 impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
+    #[instrument(level = "trace", skip(self, cx, buf))]
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -408,7 +422,7 @@ impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
         use S3SeekState::*;
         match &mut self.state {
             Pending => {
-                println!("New fetch");
+                event!(Level::DEBUG, "Making Get Object Request");
                 let request = self
                     .client
                     .get_object()
@@ -420,21 +434,26 @@ impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
                 cx.waker().wake_by_ref();
                 Poll::Pending
             }
-            Fetching(request) => match Pin::new(request).poll(cx) {
-                Poll::Ready(Ok(response)) => {
-                    self.state = Reading(Box::pin(response.body.into_async_read()));
-                    cx.waker().wake_by_ref();
-                    Poll::Pending
+            Fetching(request) => {
+                event!(Level::DEBUG, "Polling Get Object Request");
+                match Pin::new(request).poll(cx) {
+                    Poll::Ready(Ok(response)) => {
+                        self.state = Reading(Box::pin(response.body.into_async_read()));
+                        cx.waker().wake_by_ref();
+                        Poll::Pending
+                    }
+                    other => other
+                        .map_err(|e| Error::new(ErrorKind::Other, e))
+                        .map_ok(|_| ()),
                 }
-                other => other
-                    .map_err(|e| Error::new(ErrorKind::Other, e))
-                    .map_ok(|_| ()),
-            },
+            }
             Reading(read) => {
+                event!(Level::DEBUG, "Polling S3 Object ByteStream");
                 let previous = buf.filled().len();
                 match Pin::new(read).poll_read(cx, buf) {
                     Poll::Ready(Ok(())) => {
                         let bytes_read = buf.filled().len() - previous;
+                        event!(Level::DEBUG, "Read {bytes_read} from stream");
                         self.position += u64::try_from(bytes_read)
                             .map_err(|e| Error::new(ErrorKind::Other, e))?;
                         Poll::Ready(Ok(()))
@@ -452,6 +471,7 @@ impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
 }
 
 impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
+    #[instrument(level = "trace", skip(self))]
     fn start_seek(mut self: Pin<&mut Self>, position: std::io::SeekFrom) -> std::io::Result<()> {
         //Set State to Pending and calculate current possition
         use std::io::SeekFrom::*;
@@ -490,15 +510,21 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
 
         let state = std::mem::replace(&mut self.state, S3SeekState::None);
         // IS the new position within the seekable distance or should a new request be made?
-        let is_seekable_range = new_pos <= self.position + 5 * bytesize::MIB
+        let is_seekable_range = new_pos <= self.position + self.bytes_before_fetch
             && new_pos > self.position
             && new_pos < self.length;
+        event!(Level::DEBUG, position = ?position, new_position = ?new_pos, is_seekable_range = is_seekable_range, bytes_before_fetch = ?self.bytes_before_fetch);
         if new_pos == self.position {
+            event!(Level::DEBUG, "Not change in position");
             self.state = state; // Nothing changes
         } else if let (S3SeekState::Reading(f), true) = (state, is_seekable_range) {
-            println!("Setting state to seeking");
+            event!(
+                Level::DEBUG,
+                "New position in range. Reading current bytestream until {new_pos}"
+            );
             self.state = S3SeekState::Seeking(f, new_pos); // This will seek
         } else {
+            event!(Level::DEBUG, "Moving to {new_pos}, trigger a new S3 fetch");
             self.position = new_pos; //Trigger a new fetch as this location
             self.state = S3SeekState::Pending
         };
@@ -506,8 +532,8 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
         Ok(())
     }
 
+    #[instrument(level = "trace", skip(self, cx))]
     fn poll_complete(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<u64>> {
-        println!("poll_complete");
         let state = std::mem::replace(&mut self.state, S3SeekState::None);
         match state {
             S3SeekState::None => Poll::Ready(Err(Error::new(
@@ -516,21 +542,26 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
             ))),
             S3SeekState::Seeking(mut read, target) => {
                 //Read forward to target
-                println!("poll_complete seeking");
+                event!(Level::DEBUG, "Reading byte stream to {target}");
                 let bytes_to_seek = usize::try_from(target - self.position)
                     .map_err(|e| Error::new(ErrorKind::Other, e))?;
+                event!(Level::DEBUG, "Attempting to read {bytes_to_seek} bytes");
                 let mut backing = vec![0; bytes_to_seek];
                 let mut buf = tokio::io::ReadBuf::new(&mut backing);
                 match Pin::new(&mut read).poll_read(cx, &mut buf) {
                     Poll::Ready(Ok(())) => {
                         self.position += u64::try_from(buf.filled().len())
                             .map_err(|e| Error::new(ErrorKind::Other, e))?;
+                        event!(Level::DEBUG, "Read {} bytes", buf.filled().len());
                         if self.position == target {
-                            println!("poll_complete target found");
+                            event!(
+                                Level::DEBUG,
+                                "Reached target {target}.  Setting state from Seeking to Reading"
+                            );
                             self.state = S3SeekState::Reading(read);
                             Poll::Ready(Ok(self.position))
                         } else {
-                            println!("poll_complete return pending");
+                            event!(Level::DEBUG, "Did no reach target {target}.");
                             self.state = S3SeekState::Seeking(read, target);
                             // The read had returned data so a wake needs to be triggerd
                             cx.waker().wake_by_ref();

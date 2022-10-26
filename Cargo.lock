@@ -1779,6 +1779,7 @@ dependencies = [
  "testcontainers",
  "tokio",
  "tokio-util",
+ "tracing",
  "typed-builder",
  "url",
 ]

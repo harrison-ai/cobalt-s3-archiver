@@ -385,9 +385,9 @@ pub async fn validate_zip_entry_bytes(
                 .and_then(|l| {
                     serde_json::from_str::<ManifestEntry>(&l).map_err(anyhow::Error::from)
                 })?;
-            //Using the stream reader panics with Stored items
             let entry_name = reader.entry().filename().to_owned();
             let mut sink = FuturesAsyncWriteCompatExt::compat_write(CRC32Sink::default());
+            //Using the stream reader panics with Stored items
             std::panic::AssertUnwindSafe(
                 reader.copy_to_end_crc(&mut sink, 64 * bytesize::KB as usize),
             )
@@ -440,7 +440,7 @@ pub async fn validate_zip_central_dir(
         .map_ok(BufReader::new)
         .map_ok(|b| b.lines());
 
-    let zip_request = aws::S3ObjectSeekableRead::new(client, zip_file);
+    let zip_request = aws::S3ObjectSeekableRead::new(client, zip_file, None);
 
     let (manifest_lines, zip_response) = futures::join!(manifest_request, zip_request);
     let mut manifest_lines = manifest_lines?;
