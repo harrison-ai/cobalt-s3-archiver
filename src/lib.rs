@@ -404,6 +404,10 @@ pub async fn validate_zip_entry_bytes(
             )?;
         }
     }
+    ensure!(
+        manifest_lines.next_line().await?.is_none(),
+        "Manifest has more entries that the zip."
+    );
 
     Ok(())
 }
@@ -437,7 +441,7 @@ pub async fn validate_zip_central_dir(
         .key(&manifest_file.key)
         .send()
         .map_ok(|r| r.body.into_async_read())
-        .map_ok(BufReader::new)
+        .map_ok(|l| BufReader::with_capacity(64 * bytesize::KB as usize, l))
         .map_ok(|b| b.lines());
 
     let zip_request = aws::S3ObjectSeekableRead::new(client, zip_file, None);
