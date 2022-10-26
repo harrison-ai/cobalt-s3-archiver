@@ -460,6 +460,10 @@ pub async fn validate_zip_central_dir(
             .and_then(|l| serde_json::from_str::<ManifestEntry>(&l).map_err(anyhow::Error::from))?;
         validate_manifest_entry(&manifest_entry, entry.filename(), entry.crc32())?
     }
+    ensure!(
+        manifest_lines.next_line().await?.is_none(),
+        "Manifest has more entries that the zip."
+    );
     Ok(())
 }
 
