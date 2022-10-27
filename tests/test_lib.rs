@@ -303,7 +303,6 @@ async fn test_validate_zip_entry_streamed_file() {
     use Compression::*;
     let compressions = vec![Deflate, Bzip, Lzma, Zstd, Xz, Stored];
 
-    let mut durations: Vec<u128> = Vec::new();
     for compression in compressions {
         let args = fixtures::CheckZipArgs {
             data_descriptors: true,

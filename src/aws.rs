@@ -76,6 +76,7 @@ impl<'a> AsyncMultipartUpload<'a> {
         part_size: usize,
         max_uploading_parts: Option<usize>,
     ) -> anyhow::Result<AsyncMultipartUpload<'a>> {
+        event!(Level::DEBUG, "New AsyncMultipartUpload");
         if part_size < MIN_PART_SIZE {
             anyhow::bail!("part_size was {part_size}, can not be less than {MIN_PART_SIZE}")
         }
@@ -116,12 +117,13 @@ impl<'a> AsyncMultipartUpload<'a> {
         })
     }
 
-    #[instrument(level = "trace", skip(buffer))]
+    #[instrument(skip(buffer))]
     fn upload_part<'b>(
         config: &AsyncMultipartUploadConfig,
         buffer: Vec<u8>,
         part_number: i32,
     ) -> MultipartUploadFuture<'b> {
+        event!(Level::DEBUG, "Uploading Part");
         config
             .client
             .upload_part()
@@ -149,7 +151,7 @@ impl<'a> AsyncMultipartUpload<'a> {
         complete
     }
 
-    #[instrument(level = "trace")]
+    #[instrument]
     fn try_collect_complete_parts(
         complete_results: Vec<Result<(UploadPartOutput, i32), SdkError<UploadPartError>>>,
     ) -> Result<Vec<CompletedPart>, Error> {
@@ -167,7 +169,7 @@ impl<'a> AsyncMultipartUpload<'a> {
             .collect::<Result<Vec<_>, _>>()
     }
 
-    #[instrument(level = "trace")]
+    #[instrument]
     fn complete_multipart_upload<'b>(
         config: &AsyncMultipartUploadConfig,
         completed_parts: Vec<CompletedPart>,
@@ -187,7 +189,7 @@ impl<'a> AsyncMultipartUpload<'a> {
             .boxed()
     }
 
-    #[instrument(level = "trace", skip(uploads))]
+    #[instrument(skip(uploads))]
     fn check_uploads(
         uploads: &mut Vec<MultipartUploadFuture<'a>>,
         completed_parts: &mut Vec<CompletedPart>,
@@ -202,7 +204,7 @@ impl<'a> AsyncMultipartUpload<'a> {
 }
 
 impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
-    #[instrument(level = "trace", skip(self, cx, buf))]
+    #[instrument(skip(self, cx, buf))]
     fn poll_write(
         mut self: Pin<&mut AsyncMultipartUpload<'a>>,
         cx: &mut Context<'_>,
@@ -210,6 +212,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
     ) -> Poll<Result<usize, Error>> {
         // I'm not sure how to work around borrow of two disjoint fields.
         // I had lifetime issues trying to implement Split Borrows
+        event!(Level::DEBUG, "Polling write");
         let config = self.config.clone();
         match &mut self.state {
             AsyncMultipartUploadState::Writing {
@@ -218,6 +221,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 part_number,
                 completed_parts,
             } => {
+                event!(Level::DEBUG, "Polling write while Writing");
                 //Poll current uploads to make space for in coming data
                 AsyncMultipartUpload::check_uploads(uploads, completed_parts, cx)?;
                 //only take enough bytes to fill remaining upload capacity
@@ -234,6 +238,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
 
                 //keep pushing uploads until the buffer is small than the part size
                 while buffer.len() >= config.part_size {
+                    event!(Level::DEBUG, "Starting a new part upload");
                     let mut part = buffer.split_off(config.part_size);
                     // We want to consume the first part of the buffer and upload it to S3.
                     // The split_off call does this but it's the wrong way around.
@@ -257,7 +262,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
         }
     }
 
-    #[instrument(level = "trace", skip(self, cx))]
+    #[instrument(skip(self, cx))]
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         //Ensure all pending uploads are completed.
         match &mut self.state {
@@ -266,11 +271,14 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 completed_parts,
                 ..
             } => {
+                event!(Level::DEBUG, "Flushing Multipart Uploads");
                 //Poll uploads and mark as completed
                 AsyncMultipartUpload::check_uploads(uploads, completed_parts, cx)?;
                 if uploads.is_empty() {
+                    event!(Level::DEBUG, "All part uploads are complete");
                     Poll::Ready(Ok(()))
                 } else {
+                    event!(Level::DEBUG, "Waiting for uploads to complete");
                     //Assume that polled futures will trigger a wake
                     Poll::Pending
                 }
@@ -282,11 +290,12 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
         }
     }
 
-    #[instrument(level = "trace", skip(self, cx))]
+    #[instrument(skip(self, cx))]
     fn poll_close<'b>(
         mut self: Pin<&'b mut AsyncMultipartUpload<'a>>,
         cx: &'b mut Context<'_>,
     ) -> Poll<Result<(), Error>> {
+        event!(Level::DEBUG, "Closing Multipart Uploads");
         let config = self.config.clone();
         match &mut self.state {
             AsyncMultipartUploadState::Writing {
@@ -295,9 +304,11 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 completed_parts,
                 part_number,
             } => {
+                event!(Level::DEBUG, "Creating final Part Upload");
                 //make space for final upload
                 AsyncMultipartUpload::check_uploads(uploads, completed_parts, cx)?;
                 if config.max_uploading_parts - uploads.len() == 0 {
+                    event!(Level::DEBUG, "Waiting for available upload capacity");
                     return Poll::Pending;
                 }
                 if !buffer.is_empty() {
@@ -320,6 +331,10 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 uploads,
                 completed_parts,
             } if uploads.is_empty() => {
+                event!(
+                    Level::DEBUG,
+                    "AsyncS3Upload all parts uploaded, Completing Upload"
+                );
                 //Once uploads are empty change state to Completing
                 let mut completed_parts = mem::take(completed_parts);
                 // This was surprising but was needed to complete the upload.
@@ -335,6 +350,10 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
                 uploads,
                 completed_parts,
             } => {
+                event!(
+                    Level::DEBUG,
+                    "AsyncS3Upload Waiting for All Parts to Upload"
+                );
                 //Poll all uploads, remove complete and fetch their results.
                 AsyncMultipartUpload::check_uploads(uploads, completed_parts, cx)?;
                 //Trigger a wake if all uploads have completed
@@ -344,6 +363,7 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
             AsyncMultipartUploadState::Completing(fut) => {
                 //use ready! macro to wait for complete uploaded to be done
                 //ready! is like the ? but for Poll objects returning `Polling` if not Ready
+                event!(Level::DEBUG, "Waiting for upload complete to finish");
                 let result = ready!(Pin::new(fut).poll(cx))
                     .map(|_| ())
                     .map_err(|e| Error::new(ErrorKind::Other, e)); //set state to closed
