@@ -506,8 +506,6 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
             }
         };
 
-        println!("in {position:?}, old {} new {new_pos}", self.position);
-
         let state = std::mem::replace(&mut self.state, S3SeekState::None);
         // IS the new position within the seekable distance or should a new request be made?
         let is_seekable_range = new_pos <= self.position + self.bytes_before_fetch

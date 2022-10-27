@@ -216,7 +216,6 @@ impl<'a> Archiver<'a> {
             "prefix_strip must end with `/`"
         );
 
-        println!("Creating zip file from dst_key {:?}", output_location);
         //Create the upload and the zip writer.
         let upload = AsyncMultipartUpload::new(
             client,
