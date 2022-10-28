@@ -33,6 +33,8 @@ fn get_aws_env<T: Image>(container: &Option<Box<Container<T>>>) -> HashMap<Strin
         "AWS_SECRET_ACCESS_KEY".into(),
         std::env::var("AWS_SECRET_ACCESS_KEY").unwrap_or_else(|_| "test".into()),
     );
+    //Change this to get more debug
+    cmd_env.insert("RUST_LOG".into(), "info".into());
     cmd_env
 }
 

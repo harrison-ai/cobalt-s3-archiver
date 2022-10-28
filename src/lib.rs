@@ -216,7 +216,6 @@ impl<'a> Archiver<'a> {
             "prefix_strip must end with `/`"
         );
 
-        println!("Creating zip file from dst_key {:?}", output_location);
         //Create the upload and the zip writer.
         let upload = AsyncMultipartUpload::new(
             client,
@@ -360,7 +359,7 @@ pub async fn validate_zip_entry_bytes(
         .key(&manifest_file.key)
         .send()
         .map_ok(|r| r.body.into_async_read())
-        .map_ok(BufReader::new)
+        .map_ok(|r| BufReader::with_capacity(64 * bytesize::KB as usize, r))
         .map_ok(|b| b.lines());
 
     let zip_request = client
@@ -368,13 +367,13 @@ pub async fn validate_zip_entry_bytes(
         .bucket(&zip_file.bucket)
         .key(&zip_file.key)
         .send()
-        .map_ok(|r| r.body.into_async_read());
+        .map_ok(|r| r.body.into_async_read())
+        .map_ok(|r| BufReader::with_capacity(64 * bytesize::KB as usize, r));
 
     let (manifest_lines, zip_response) = futures::join!(manifest_request, zip_request);
     let mut manifest_lines = manifest_lines?;
-    let zip_response = zip_response?;
 
-    let mut zip_reader = async_zip::read::stream::ZipFileReader::new(zip_response);
+    let mut zip_reader = async_zip::read::stream::ZipFileReader::new(zip_response?);
 
     while !zip_reader.finished() {
         if let Some(reader) = zip_reader.entry_reader().await? {
@@ -385,9 +384,9 @@ pub async fn validate_zip_entry_bytes(
                 .and_then(|l| {
                     serde_json::from_str::<ManifestEntry>(&l).map_err(anyhow::Error::from)
                 })?;
-            //Using the stream reader panics with Stored items
             let entry_name = reader.entry().filename().to_owned();
             let mut sink = FuturesAsyncWriteCompatExt::compat_write(CRC32Sink::default());
+            //Using the stream reader panics with Stored items
             std::panic::AssertUnwindSafe(
                 reader.copy_to_end_crc(&mut sink, 64 * bytesize::KB as usize),
             )
@@ -404,6 +403,10 @@ pub async fn validate_zip_entry_bytes(
             )?;
         }
     }
+    ensure!(
+        manifest_lines.next_line().await?.is_none(),
+        "Manifest has more entries that the zip."
+    );
 
     Ok(())
 }
@@ -437,10 +440,10 @@ pub async fn validate_zip_central_dir(
         .key(&manifest_file.key)
         .send()
         .map_ok(|r| r.body.into_async_read())
-        .map_ok(BufReader::new)
+        .map_ok(|l| BufReader::with_capacity(64 * bytesize::KB as usize, l))
         .map_ok(|b| b.lines());
 
-    let zip_request = aws::S3ObjectSeekableRead::new(client, zip_file);
+    let zip_request = aws::S3ObjectSeekableRead::new(client, zip_file, None);
 
     let (manifest_lines, zip_response) = futures::join!(manifest_request, zip_request);
     let mut manifest_lines = manifest_lines?;
@@ -456,6 +459,10 @@ pub async fn validate_zip_central_dir(
             .and_then(|l| serde_json::from_str::<ManifestEntry>(&l).map_err(anyhow::Error::from))?;
         validate_manifest_entry(&manifest_entry, entry.filename(), entry.crc32())?
     }
+    ensure!(
+        manifest_lines.next_line().await?.is_none(),
+        "Manifest has more entries that the zip."
+    );
     Ok(())
 }
 

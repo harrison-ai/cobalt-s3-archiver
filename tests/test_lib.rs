@@ -302,6 +302,7 @@ async fn test_validate_zip_entry_streamed_file() {
 
     use Compression::*;
     let compressions = vec![Deflate, Bzip, Lzma, Zstd, Xz, Stored];
+
     for compression in compressions {
         let args = fixtures::CheckZipArgs {
             data_descriptors: true,
@@ -312,6 +313,7 @@ async fn test_validate_zip_entry_streamed_file() {
         fixtures::create_and_validate_zip(&s3_client, &args)
             .await
             .expect("Error creating and validating with {compression:?}");
+
         let bytes_result = s3_archiver::validate_zip_entry_bytes(
             &s3_client,
             args.manifest_file.as_ref().unwrap(),
@@ -321,7 +323,9 @@ async fn test_validate_zip_entry_streamed_file() {
 
         match compression {
             Stored => assert!(bytes_result.is_err(), "Streaming read of zip with no compression written with Data Descriptions should fail"),
-            _ => assert!(bytes_result.is_ok(), "Streaming read of zip with {compression:?} entries written with Data Descriptions should not fail")
+            _ => {
+                assert!(bytes_result.is_ok(), "Streaming read of zip with {compression:?} entries written with Data Descriptions should not fail");
+            }
        }
 
         s3_archiver::validate_zip_central_dir(

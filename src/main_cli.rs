@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use cobalt_aws::config;
 use s3_archiver::{Compression, S3Object};
 use std::io::{BufRead, BufReader};
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug, PartialEq, Clone)]
 struct Args {
@@ -88,6 +89,14 @@ async fn main() -> Result<()> {
 
     let config = config::load_from_env().await?;
     let client = Client::new(&config);
+
+    // Start configuring a `fmt` subscriber
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .json()
+        .init();
 
     match args.command {
         Command::Archive(cmd) => {
