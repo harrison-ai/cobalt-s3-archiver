@@ -579,7 +579,7 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
                             self.state = S3SeekState::Reading(read);
                             Poll::Ready(Ok(self.position))
                         } else {
-                            event!(Level::DEBUG, "Did no reach target {target}.");
+                            event!(Level::DEBUG, "Did not reach target {target}.");
                             self.state = S3SeekState::Seeking(read, target);
                             // The read had returned data so a wake needs to be triggerd
                             cx.waker().wake_by_ref();
