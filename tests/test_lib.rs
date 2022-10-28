@@ -3,7 +3,10 @@ pub mod common;
 use ::function_name::named;
 use common::aws::S3TestClient;
 use common::fixtures;
-use s3_archiver::{Compression, S3Object};
+use futures::prelude::*;
+use rand::Rng;
+use s3_archiver::{Compression, ManifestEntry, S3Object};
+use std::io::prelude::*;
 
 #[tokio::test]
 #[named]
@@ -336,4 +339,122 @@ async fn test_validate_zip_entry_streamed_file() {
         .await
         .expect("Error creating and validating zip entry central-directory {compression:?}");
     }
+}
+
+#[tokio::test]
+#[named]
+async fn test_validate_invalid_manifest_fails() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let mut rng = fixtures::seeded_rng(function_name!());
+
+    let args = fixtures::CheckZipArgs {
+        compression: Compression::Deflate,
+        data_descriptors: true,
+        ..fixtures::CheckZipArgs::seeded_args(&mut rng, 10, None)
+    };
+
+    fixtures::create_and_validate_zip(&s3_client, &args)
+        .await
+        .expect("Error creating and validating with {compression:?}");
+
+    let bytes_result = s3_archiver::validate_zip_entry_bytes(
+        &s3_client,
+        args.manifest_file.as_ref().unwrap(),
+        &args.dst_obj,
+    )
+    .await;
+
+    assert!(
+        bytes_result.is_ok(),
+        "Streaming read of zip entries written with Data Descriptions should not fail"
+    );
+
+    let manifest_file = &args.manifest_file.as_ref().unwrap();
+    let mut writer =
+        cobalt_aws::s3::AsyncPutObject::new(&s3_client, &manifest_file.bucket, &manifest_file.key);
+    let bytes = fixtures::fetch_bytes(&s3_client, manifest_file)
+        .await
+        .unwrap();
+    for line in std::io::BufReader::new(&bytes[..]).lines() {
+        let entry = serde_json::from_str::<ManifestEntry>(&line.unwrap()).unwrap();
+        let entry = ManifestEntry {
+            crc32: rng.gen(),
+            ..entry
+        };
+        writer
+            .write_all(&serde_json::json!(entry).to_string().into_bytes())
+            .await
+            .unwrap();
+    }
+    writer.close().await.unwrap();
+
+    let bytes_result = s3_archiver::validate_zip_entry_bytes(
+        &s3_client,
+        args.manifest_file.as_ref().unwrap(),
+        &args.dst_obj,
+    )
+    .await;
+    assert!(
+        bytes_result.is_err(),
+        "Invalid manifest should fail validation"
+    );
+}
+
+#[tokio::test]
+#[named]
+async fn test_validate_incomplet_manifest_fails() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let mut rng = fixtures::seeded_rng(function_name!());
+
+    let args = fixtures::CheckZipArgs {
+        compression: Compression::Deflate,
+        data_descriptors: true,
+        ..fixtures::CheckZipArgs::seeded_args(&mut rng, 10, None)
+    };
+
+    fixtures::create_and_validate_zip(&s3_client, &args)
+        .await
+        .expect("Error creating and validating with {compression:?}");
+
+    let bytes_result = s3_archiver::validate_zip_entry_bytes(
+        &s3_client,
+        args.manifest_file.as_ref().unwrap(),
+        &args.dst_obj,
+    )
+    .await;
+
+    assert!(
+        bytes_result.is_ok(),
+        "Streaming read of zip entries written with Data Descriptions should not fail"
+    );
+
+    let manifest_file = &args.manifest_file.as_ref().unwrap();
+    let mut writer =
+        cobalt_aws::s3::AsyncPutObject::new(&s3_client, &manifest_file.bucket, &manifest_file.key);
+    let bytes = fixtures::fetch_bytes(&s3_client, manifest_file)
+        .await
+        .unwrap();
+    for line in std::io::BufReader::new(&bytes[..]).lines().skip(1) {
+        let entry = serde_json::from_str::<ManifestEntry>(&line.unwrap()).unwrap();
+        writer
+            .write_all(&serde_json::json!(entry).to_string().into_bytes())
+            .await
+            .unwrap();
+    }
+    writer.close().await.unwrap();
+
+    let bytes_result = s3_archiver::validate_zip_entry_bytes(
+        &s3_client,
+        args.manifest_file.as_ref().unwrap(),
+        &args.dst_obj,
+    )
+    .await;
+    assert!(
+        bytes_result.is_err(),
+        "Incomplet manifest should fail validation"
+    );
 }

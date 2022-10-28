@@ -125,9 +125,9 @@ const MAX_ZIP_FILE_SIZE_BYTES: u32 = u32::MAX;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ManifestEntry {
-    object: S3Object,
-    filename_in_zip: String,
-    crc32: u32,
+    pub object: S3Object,
+    pub filename_in_zip: String,
+    pub crc32: u32,
 }
 
 impl ManifestEntry {
@@ -377,23 +377,24 @@ pub async fn validate_zip_entry_bytes(
 
     while !zip_reader.finished() {
         if let Some(reader) = zip_reader.entry_reader().await? {
-            let manifest_entry = manifest_lines
-                .next_line()
-                .await?
+            let entry_name = reader.entry().filename().to_owned();
+            let mut sink = FuturesAsyncWriteCompatExt::compat_write(CRC32Sink::default());
+            //Using the stream reader panics with Stored items
+            let crc_copy = std::panic::AssertUnwindSafe(
+                reader.copy_to_end_crc(&mut sink, 64 * bytesize::KB as usize),
+            )
+            .catch_unwind()
+            .map_err(|_| anyhow::Error::msg("Failed to "));
+
+            let (crc_copy, manifest_line) = futures::join!(crc_copy, manifest_lines.next_line());
+            crc_copy??;
+            sink.shutdown().await?;
+
+            let manifest_entry = manifest_line?
                 .context("Manifest has too few entries")
                 .and_then(|l| {
                     serde_json::from_str::<ManifestEntry>(&l).map_err(anyhow::Error::from)
                 })?;
-            let entry_name = reader.entry().filename().to_owned();
-            let mut sink = FuturesAsyncWriteCompatExt::compat_write(CRC32Sink::default());
-            //Using the stream reader panics with Stored items
-            std::panic::AssertUnwindSafe(
-                reader.copy_to_end_crc(&mut sink, 64 * bytesize::KB as usize),
-            )
-            .catch_unwind()
-            .map_err(|_| anyhow::Error::msg("Failed to "))
-            .await??;
-            sink.shutdown().await?;
             validate_manifest_entry(
                 &manifest_entry,
                 &entry_name,
