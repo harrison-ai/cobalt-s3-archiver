@@ -93,7 +93,7 @@ async fn main() -> Result<()> {
     // Start configuring a `fmt` subscriber
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")),
         )
         .json()
         .init();
