@@ -455,6 +455,6 @@ async fn test_validate_incomplete_manifest_fails() {
     .await;
     assert!(
         bytes_result.is_err(),
-        "Incomplet manifest should fail validation"
+        "Incomplete manifest should fail validation"
     );
 }
