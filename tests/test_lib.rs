@@ -404,7 +404,7 @@ async fn test_validate_invalid_manifest_fails() {
 
 #[tokio::test]
 #[named]
-async fn test_validate_incomplet_manifest_fails() {
+async fn test_validate_incomplete_manifest_fails() {
     let test_client = S3TestClient::default();
     let (_container, s3_client) = test_client.client().await;
 
