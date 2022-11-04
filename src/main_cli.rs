@@ -17,9 +17,9 @@ struct Args {
 enum Command {
     ///Create an ZIP archive in S3 from source files in S3.
     Archive(ArchiveCommand),
-    ///Validate a ZIP archvie matches the given manifest.
+    ///Validate a ZIP archive matches the given manifest.
     Validate(ValidateCommand),
-    ///Validate the crc32 of files in the manifest match those in the manifest.
+    ///Validate the calculated crc32 of files in the manifest match those recorded the manifest.
     ValidateManifest(ValidateManifestCommand),
 }
 
