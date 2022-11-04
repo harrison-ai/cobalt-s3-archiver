@@ -469,7 +469,7 @@ async fn test_validate_manifest() {
 
     let bucket = "test-bucket";
     fixtures::create_bucket(&s3_client, bucket).await.unwrap();
-    
+
     //create a random file
     let object = S3Object::new(bucket, fixtures::gen_random_file_name(&mut rng));
     fixtures::create_random_file(&s3_client, &object, bytesize::KB as usize)
@@ -491,10 +491,12 @@ async fn test_validate_manifest() {
         .unwrap();
     writer.close().await.unwrap();
 
-    assert!(s3_archiver::validate_manifest_file(&s3_client, &manifest_file, 1, 1)
-        .await.is_ok());
+    assert!(
+        s3_archiver::validate_manifest_file(&s3_client, &manifest_file, 1, 1)
+            .await
+            .is_ok()
+    );
 }
-
 
 #[tokio::test]
 #[named]
@@ -506,7 +508,7 @@ async fn test_validate_manifest_invalid_crc() {
 
     let bucket = "test-bucket";
     fixtures::create_bucket(&s3_client, bucket).await.unwrap();
-    
+
     //create a random file
     let object = S3Object::new(bucket, fixtures::gen_random_file_name(&mut rng));
     fixtures::create_random_file(&s3_client, &object, bytesize::KB as usize)
@@ -528,6 +530,9 @@ async fn test_validate_manifest_invalid_crc() {
         .unwrap();
     writer.close().await.unwrap();
 
-    assert!(s3_archiver::validate_manifest_file(&s3_client, &manifest_file, 1, 1)
-        .await.is_err());
+    assert!(
+        s3_archiver::validate_manifest_file(&s3_client, &manifest_file, 1, 1)
+            .await
+            .is_err()
+    );
 }
