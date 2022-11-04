@@ -19,6 +19,8 @@ enum Command {
     Archive(ArchiveCommand),
     ///Validate a ZIP archvie matches the given manifest.
     Validate(ValidateCommand),
+    ///Validate the crc32 of files in the manifest match those in the manifest.
+    ValidateManifest(ValidateManifestCommand),
 }
 
 #[derive(Parser, Debug, PartialEq, Clone)]
@@ -75,6 +77,23 @@ struct ValidateCommand {
     crc32_validation_type: CRC32ValidationType,
 }
 
+#[derive(Parser, Debug, PartialEq, Clone)]
+struct ValidateManifestCommand {
+    /// S3 manifest location `s3://{bucket}/{key}`
+    manifest_file: S3Object,
+    #[clap(
+        default_value_t = 1,
+        short = 'f',
+        help = "How many concurrent connections to open to S3"
+    )]
+    fetch_concurrency: usize,
+    #[clap(
+        default_value_t = 1,
+        short = 'v',
+        help = "How many concurrent validations to run"
+    )]
+    validate_concurrency: usize,
+}
 #[derive(Debug, Clone, ValueEnum, Copy, PartialEq, Eq)]
 enum CRC32ValidationType {
     /// Calculate the CRC32 again from the bytes in the ZIP.
@@ -122,6 +141,15 @@ async fn main() -> Result<()> {
                 Ok(())
             }
         },
+        Command::ValidateManifest(cmd) => {
+            s3_archiver::validate_manifest_file(
+                &client,
+                &cmd.manifest_file,
+                cmd.fetch_concurrency,
+                cmd.validate_concurrency,
+            )
+            .await
+        }
     }
 }
 
