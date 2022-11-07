@@ -11,9 +11,10 @@ to keep the memory usage low.
 Usage: s3-archiver-cli <COMMAND>
 
 Commands:
-  archive   Create an ZIP archive in S3 from source files in S3
-  validate  Validate a ZIP archvie matches the given manifest
-  help      Print this message or the help of the given subcommand(s)
+  archive            Create an ZIP archive in S3 from source files in S3
+  validate-archive   Validate a ZIP archive matches the given manifest
+  validate-manifest  Validate the calculated crc32 of files in the manifest match those recorded the manifest
+  help               Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help  Print help information

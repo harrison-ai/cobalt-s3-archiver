@@ -1,8 +1,9 @@
-use anyhow::{ensure, Result};
+use anyhow::{ensure, Context, Result};
 use aws_sdk_s3::Client;
 use bytesize::ByteSize;
 use clap::{Parser, Subcommand, ValueEnum};
 use cobalt_aws::config;
+use futures::prelude::*;
 use s3_archiver::{Compression, S3Object};
 use std::io::{BufRead, BufReader};
 use tracing_subscriber::EnvFilter;
@@ -17,8 +18,10 @@ struct Args {
 enum Command {
     ///Create an ZIP archive in S3 from source files in S3.
     Archive(ArchiveCommand),
-    ///Validate a ZIP archvie matches the given manifest.
-    Validate(ValidateCommand),
+    ///Validate a ZIP archive matches the given manifest.
+    ValidateArchive(ValidateCommand),
+    ///Validate the calculated crc32 of files in the manifest match those recorded the manifest.
+    ValidateManifest(ValidateManifestCommand),
 }
 
 #[derive(Parser, Debug, PartialEq, Clone)]
@@ -75,6 +78,40 @@ struct ValidateCommand {
     crc32_validation_type: CRC32ValidationType,
 }
 
+#[derive(Parser, Debug, PartialEq, Clone)]
+struct ValidateManifestCommand {
+    /// S3 manifest location `s3://{bucket}/{key}`
+    #[clap(
+        help = "S3 manifest location `s3://{bucket}/{key}`",
+        required_unless_present = "stdin"
+    )]
+    manifest_object: Option<S3Object>,
+    #[clap(
+        default_value_t = 1,
+        conflicts_with = "manifest_object",
+        short = 's',
+        help = "How many manifests to validate concurrently"
+    )]
+    manifest_concurrency: usize,
+    #[clap(
+        default_value_t = 1,
+        short = 'f',
+        help = "How many concurrent connections to open to S3"
+    )]
+    fetch_concurrency: usize,
+    #[clap(
+        default_value_t = 1,
+        short = 'v',
+        help = "How many concurrent validations to run"
+    )]
+    validate_concurrency: usize,
+    #[clap(
+        short = 'c',
+        help = "Read a list of manifest files to validate from stdin",
+        conflicts_with = "manifest_object"
+    )]
+    stdin: bool,
+}
 #[derive(Debug, Clone, ValueEnum, Copy, PartialEq, Eq)]
 enum CRC32ValidationType {
     /// Calculate the CRC32 again from the bytes in the ZIP.
@@ -102,7 +139,7 @@ async fn main() -> Result<()> {
         Command::Archive(cmd) => {
             create_zip_from_read(&client, &mut BufReader::new(std::io::stdin()), &cmd).await
         }
-        Command::Validate(cmd) => match cmd.crc32_validation_type {
+        Command::ValidateArchive(cmd) => match cmd.crc32_validation_type {
             CRC32ValidationType::Bytes => {
                 s3_archiver::validate_zip_entry_bytes(&client, &cmd.manifest_file, &cmd.zip_file)
                     .await?;
@@ -122,7 +159,55 @@ async fn main() -> Result<()> {
                 Ok(())
             }
         },
+        Command::ValidateManifest(cmd) if cmd.stdin => {
+            validate_manifest_files_from_read(&client, &mut BufReader::new(std::io::stdin()), &cmd)
+                .await?;
+            println!( "All input manfest file crc32 values matched those calculated from the source files");
+            Ok(())
+        }
+        Command::ValidateManifest(cmd) => {
+            let manifest_object = cmd
+                .manifest_object
+                .context("Manifest object requied if not reading from stdin")?;
+            s3_archiver::validate_manifest_file(
+                &client,
+                &manifest_object,
+                cmd.fetch_concurrency,
+                cmd.validate_concurrency,
+            )
+            .await?;
+            println!(
+                    "All manfest entry crc32 values in ${:?} matched those calculated from the source files",
+                    &manifest_object
+                );
+            Ok(())
+        }
     }
+}
+
+async fn validate_manifest_files_from_read(
+    client: &Client,
+    input: &mut impl BufRead,
+    args: &ValidateManifestCommand,
+) -> Result<()> {
+    let objects = input
+        .lines()
+        .map(|x| x.map_err(anyhow::Error::from))
+        .map(|x| x.and_then(S3Object::try_from));
+
+    futures::stream::iter(objects)
+        .map_ok(|m| async move {
+            s3_archiver::validate_manifest_file(
+                client,
+                &m,
+                args.fetch_concurrency,
+                args.validate_concurrency,
+            )
+            .await
+        })
+        .try_buffered(1)
+        .try_collect()
+        .await
 }
 
 async fn create_zip_from_read(

@@ -458,3 +458,81 @@ async fn test_validate_incomplete_manifest_fails() {
         "Incomplete manifest should fail validation"
     );
 }
+
+#[tokio::test]
+#[named]
+async fn test_validate_manifest() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let mut rng = fixtures::seeded_rng(function_name!());
+
+    let bucket = "test-bucket";
+    fixtures::create_bucket(&s3_client, bucket).await.unwrap();
+
+    //create a random file
+    let object = S3Object::new(bucket, fixtures::gen_random_file_name(&mut rng));
+    fixtures::create_random_file(&s3_client, &object, bytesize::KB as usize)
+        .await
+        .unwrap();
+    let crc32 = fixtures::object_crc32(&s3_client, &object).await.unwrap();
+
+    let manifest_file = S3Object::new(bucket, fixtures::gen_random_file_name(&mut rng));
+    let mut writer =
+        cobalt_aws::s3::AsyncPutObject::new(&s3_client, &manifest_file.bucket, &manifest_file.key);
+    let entry = ManifestEntry {
+        object: object.clone(),
+        filename_in_zip: "".into(),
+        crc32,
+    };
+    writer
+        .write_all(&serde_json::json!(entry).to_string().into_bytes())
+        .await
+        .unwrap();
+    writer.close().await.unwrap();
+
+    assert!(
+        s3_archiver::validate_manifest_file(&s3_client, &manifest_file, 1, 1)
+            .await
+            .is_ok()
+    );
+}
+
+#[tokio::test]
+#[named]
+async fn test_validate_manifest_invalid_crc() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let mut rng = fixtures::seeded_rng(function_name!());
+
+    let bucket = "test-bucket";
+    fixtures::create_bucket(&s3_client, bucket).await.unwrap();
+
+    //create a random file
+    let object = S3Object::new(bucket, fixtures::gen_random_file_name(&mut rng));
+    fixtures::create_random_file(&s3_client, &object, bytesize::KB as usize)
+        .await
+        .unwrap();
+    let crc32 = fixtures::object_crc32(&s3_client, &object).await.unwrap();
+
+    let manifest_file = S3Object::new(bucket, fixtures::gen_random_file_name(&mut rng));
+    let mut writer =
+        cobalt_aws::s3::AsyncPutObject::new(&s3_client, &manifest_file.bucket, &manifest_file.key);
+    let entry = ManifestEntry {
+        object: object.clone(),
+        filename_in_zip: "".into(),
+        crc32: crc32 + 100,
+    };
+    writer
+        .write_all(&serde_json::json!(entry).to_string().into_bytes())
+        .await
+        .unwrap();
+    writer.close().await.unwrap();
+
+    assert!(
+        s3_archiver::validate_manifest_file(&s3_client, &manifest_file, 1, 1)
+            .await
+            .is_err()
+    );
+}

@@ -373,3 +373,19 @@ async fn test_manifest_file_and_generate() {
     cmd.envs(env);
     cmd.assert().failure();
 }
+
+#[test]
+fn test_validate_manifest_file_no_args() {
+    let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("validate-manifest");
+    cmd.assert().failure();
+}
+
+#[test]
+fn test_validate_manifest_c_with_manifest() {
+    let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("validate-manifest");
+    cmd.arg("-c");
+    cmd.arg("s3://test/file");
+    cmd.assert().failure();
+}

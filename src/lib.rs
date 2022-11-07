@@ -19,6 +19,7 @@ use futures::prelude::*;
 use futures::stream;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio_stream::wrappers::LinesStream;
 use tokio_util::compat::FuturesAsyncWriteCompatExt;
 use typed_builder::TypedBuilder;
 use url::Url;
@@ -346,6 +347,61 @@ impl<'a> Archiver<'a> {
             .context("Expected CRC Sink to have value")?;
         Ok(crc)
     }
+}
+
+pub async fn validate_manifest_file(
+    client: &aws_sdk_s3::Client,
+    manifest_file: &S3Object,
+    fetch_concurrency: usize,
+    validate_concurrency: usize,
+) -> Result<()> {
+    let manifest_lines = client
+        .get_object()
+        .bucket(&manifest_file.bucket)
+        .key(&manifest_file.key)
+        .send()
+        .map_ok(|r| r.body.into_async_read())
+        .map_ok(|l| BufReader::with_capacity(64 * bytesize::KB as usize, l))
+        .map_ok(|b| b.lines())
+        .await?;
+
+    LinesStream::new(manifest_lines)
+        .map_err(anyhow::Error::from)
+        .and_then(|l| {
+            future::ready(serde_json::from_str::<ManifestEntry>(&l).map_err(anyhow::Error::from))
+        })
+        .map_ok(move |entry| {
+            client
+                .get_object()
+                .bucket(&entry.object.bucket)
+                .key(&entry.object.key)
+                .send()
+                .map_err(anyhow::Error::from)
+                .map_ok(move |r| (r, entry))
+        })
+        .try_buffered(fetch_concurrency)
+        .map_ok(|(r, entry)| async move {
+            let mut tokio_sink = FuturesAsyncWriteCompatExt::compat_write(CRC32Sink::default());
+            let mut buf =
+                BufReader::with_capacity(64 * bytesize::KB as usize, r.body.into_async_read());
+            tokio::io::copy(&mut buf, &mut tokio_sink).await?;
+            tokio_sink.shutdown().await?;
+            let sink_crc32 = tokio_sink
+                .into_inner()
+                .value()
+                .context("Expected a crc32 to be calculated")?;
+            ensure!(
+                entry.crc32 == sink_crc32,
+                "CRC for Entry {:?} in manifest file {:?} was {:?} does not match {sink_crc32}",
+                entry.object,
+                manifest_file,
+                entry.crc32
+            );
+            Ok(())
+        })
+        .try_buffered(validate_concurrency)
+        .try_collect()
+        .await
 }
 
 pub async fn validate_zip_entry_bytes(
