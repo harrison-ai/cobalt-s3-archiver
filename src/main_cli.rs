@@ -19,7 +19,7 @@ enum Command {
     ///Create an ZIP archive in S3 from source files in S3.
     Archive(ArchiveCommand),
     ///Validate a ZIP archive matches the given manifest.
-    Validate(ValidateCommand),
+    ValidateArchive(ValidateCommand),
     ///Validate the calculated crc32 of files in the manifest match those recorded the manifest.
     ValidateManifest(ValidateManifestCommand),
 }
@@ -139,7 +139,7 @@ async fn main() -> Result<()> {
         Command::Archive(cmd) => {
             create_zip_from_read(&client, &mut BufReader::new(std::io::stdin()), &cmd).await
         }
-        Command::Validate(cmd) => match cmd.crc32_validation_type {
+        Command::ValidateArchive(cmd) => match cmd.crc32_validation_type {
             CRC32ValidationType::Bytes => {
                 s3_archiver::validate_zip_entry_bytes(&client, &cmd.manifest_file, &cmd.zip_file)
                     .await?;
