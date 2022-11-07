@@ -389,4 +389,3 @@ fn test_validate_manifest_c_with_manifest() {
     cmd.arg("s3://test/file");
     cmd.assert().failure();
 }
- 
