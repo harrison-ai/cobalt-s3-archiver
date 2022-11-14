@@ -589,7 +589,7 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
                     other => {
                         self.state = S3SeekState::Seeking(read, target);
                         other.map_ok(|_| self.position)
-                    },
+                    }
                 }
             }
             _ => {
