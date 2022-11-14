@@ -586,7 +586,10 @@ impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
                             Poll::Pending
                         }
                     }
-                    other => other.map_ok(|_| self.position),
+                    other => {
+                        self.state = S3SeekState::Seeking(read, target);
+                        other.map_ok(|_| self.position)
+                    },
                 }
             }
             _ => {
