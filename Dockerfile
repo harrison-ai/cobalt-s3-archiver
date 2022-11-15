@@ -1,7 +1,7 @@
 ###############
 # Builder image
 ###############
-FROM --platform=$BUILDPLATFORM harrisonai/rust:1.64-1 as builder
+FROM --platform=$BUILDPLATFORM harrisonai/rust:1.65-1 as builder
 
 ARG BUILD_PROFILE=dev
 
