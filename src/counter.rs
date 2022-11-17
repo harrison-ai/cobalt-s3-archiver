@@ -18,7 +18,7 @@ pin_project! {
     /// # use futures::AsyncWriteExt;
     /// # use futures::io::sink;
     /// # use tokio_test;
-    /// # tokio_test::block_on(async { 
+    /// # tokio_test::block_on(async {
     ///      let mut counter = ByteCounter::new(sink());
     ///      counter.write("this is a test".as_bytes()).await?;
     ///      assert_eq!(14, counter.byte_count());
@@ -39,9 +39,8 @@ pin_project! {
 }
 
 impl<T: AsyncWrite> ByteCounter<T> {
-
-    /// Returns a new ByteCounter 
-    /// wrapping the inner [AsyncWrite], with 
+    /// Returns a new ByteCounter
+    /// wrapping the inner [AsyncWrite], with
     /// the byte count initialised to 0.
     pub fn new(inner: T) -> Self {
         ByteCounter {
@@ -88,7 +87,7 @@ pin_project! {
     /// # use futures::AsyncWriteExt;
     /// # use futures::io::sink;
     /// # use tokio_test;
-    /// # tokio_test::block_on(async { 
+    /// # tokio_test::block_on(async {
     ///      let mut counter = ByteLimit::new_from_inner(sink(), 10);
     ///      counter.write("this is a ".as_bytes()).await?;
     ///      assert!(counter.write("error".as_bytes()).await.is_err());

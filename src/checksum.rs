@@ -18,7 +18,7 @@ pin_project! {
 /// # use s3_archiver::checksum::CRC32Sink;
 /// # use futures::sink::SinkExt;
 /// # use tokio_test;
-/// # tokio_test::block_on(async { 
+/// # tokio_test::block_on(async {
 ///      let mut sink = CRC32Sink::default();
 ///      sink.send("this is a test".as_bytes()).await?;
 ///      sink.close().await.unwrap();
@@ -33,7 +33,7 @@ pin_project! {
 /// # use s3_archiver::checksum::CRC32Sink;
 /// # use futures::sink::SinkExt;
 /// # use tokio_test;
-/// # tokio_test::block_on(async { 
+/// # tokio_test::block_on(async {
 ///      let mut sink = CRC32Sink::default();
 ///      sink.send("this is a test".as_bytes()).await?;
 ///      assert!(sink.value().is_none());
@@ -57,7 +57,7 @@ impl<Item: AsRef<[u8]>> CRC32Sink<Item> {
             marker: PhantomData,
         }
     }
-    
+
     /// Returns the crc32 of the values passed into the
     /// [Sink] once the [Sink] has been closed.
     pub fn value(&self) -> Option<u32> {
@@ -203,4 +203,3 @@ mod tests {
         assert!(futures::SinkExt::close(&mut sink).await.is_err());
     }
 }
-

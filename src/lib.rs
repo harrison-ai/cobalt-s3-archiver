@@ -36,7 +36,7 @@ pub struct S3Object {
 
 impl S3Object {
     /// Create a new [S3Object] using anything which can be
-    /// treated as [&str].  Any leading `/` will be trimmed from 
+    /// treated as [&str].  Any leading `/` will be trimmed from
     /// the key.  No validation is done against the bucket or key
     /// to ensure they meet the AWS requirements.
     pub fn new(bucket: impl AsRef<str>, key: impl AsRef<str>) -> Self {
@@ -75,7 +75,6 @@ impl TryFrom<&str> for S3Object {
         value.parse::<Url>()?.try_into()
     }
 }
-
 
 /// Covert from [String] into a [S3Object].
 /// The [String] must be a valid `S3` [Url].
@@ -179,7 +178,7 @@ impl ManifestEntry {
     }
 }
 
-/// Serializes a sequence of [ManifestEntry] instances into S3 as a JSONL file. 
+/// Serializes a sequence of [ManifestEntry] instances into S3 as a JSONL file.
 ///
 /// This will buffer all [ManifestEntry] records in memory and write to S3 when
 /// [ManifestFileUpload::upload_object] is called.
@@ -197,7 +196,7 @@ impl<'a> ManifestFileUpload<'a> {
         }
     }
 
-    /// Adds the `entry` into the buffer 
+    /// Adds the `entry` into the buffer
     pub async fn write_manifest_entry(&mut self, entry: &ManifestEntry) -> Result<()> {
         let manifest_entry = serde_json::to_string(&entry)? + "\n";
         self.buffer
@@ -253,7 +252,7 @@ impl<'a> Archiver<'a> {
     }
 
     /// Creates a ZIP archive in S3 at the `output_location`
-    /// using the `client` from the `src` [S3Objects].
+    /// using the `client` from the `src` [S3Object].
     /// Optionally a `manifest` object is create in S3 which
     /// contains details of the files which have been added
     /// into the archive.
