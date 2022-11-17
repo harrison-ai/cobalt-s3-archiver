@@ -1,3 +1,4 @@
+//! Allows ZIP archives to be created in S3 from files stored in S3.
 pub mod aws;
 pub mod checksum;
 pub mod counter;
@@ -24,7 +25,7 @@ use tokio_util::compat::FuturesAsyncWriteCompatExt;
 use typed_builder::TypedBuilder;
 use url::Url;
 
-/// A bucket key pair for a S3Object
+/// A bucket key pair for a S3Object, with conversion from S3 urls.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct S3Object {
     /// The bucket the object is in.
@@ -34,6 +35,10 @@ pub struct S3Object {
 }
 
 impl S3Object {
+    /// Create a new [S3Object] using anything which can be
+    /// treated as [&str].  Any leading `/` will be trimmed from 
+    /// the key.  No validation is done against the bucket or key
+    /// to ensure they meet the AWS requirements.
     pub fn new(bucket: impl AsRef<str>, key: impl AsRef<str>) -> Self {
         S3Object {
             bucket: bucket.as_ref().to_owned(),
@@ -42,7 +47,8 @@ impl S3Object {
     }
 }
 
-/// Convert from an Url into a S3Object
+/// Convert from an [Url] into a [S3Object]. The scheme
+/// must be `s3` and the `path` must not be empty.
 impl TryFrom<url::Url> for S3Object {
     type Error = Error;
 
@@ -60,6 +66,8 @@ impl TryFrom<url::Url> for S3Object {
     }
 }
 
+/// Convert from a [&str] into a [S3Object].
+/// The [&str] must be a valid `S3` [Url].
 impl TryFrom<&str> for S3Object {
     type Error = Error;
 
@@ -68,6 +76,9 @@ impl TryFrom<&str> for S3Object {
     }
 }
 
+
+/// Covert from [String] into a [S3Object].
+/// The [String] must be a valid `S3` [Url].
 impl TryFrom<String> for S3Object {
     type Error = Error;
 
@@ -76,6 +87,8 @@ impl TryFrom<String> for S3Object {
     }
 }
 
+/// Covert from [&str] into a [S3Object].
+/// The [&str] must be a valid `S3` [Url].
 impl FromStr for S3Object {
     type Err = Error;
 
@@ -84,6 +97,9 @@ impl FromStr for S3Object {
     }
 }
 
+/// Converts from a [S3Object] into a [Url].
+/// If the [S3Object] holds an invalid path or
+/// domain the conversion will fail.
 impl TryFrom<S3Object> for Url {
     type Error = url::ParseError;
     fn try_from(obj: S3Object) -> std::result::Result<Self, Self::Error> {
@@ -91,22 +107,35 @@ impl TryFrom<S3Object> for Url {
     }
 }
 
+/// Converts from a [S3Object] into a [Url].
+/// If the [S3Object] holds an invalid path or
+/// domain the conversion will fail.
 impl TryFrom<&S3Object> for Url {
     type Error = url::ParseError;
     fn try_from(obj: &S3Object) -> std::result::Result<Self, Self::Error> {
         Url::parse(&format!("s3://{}/{}", obj.bucket, obj.key))
     }
 }
+
+/// The compression algorithms that are available to be used
+/// to compress entries in the ZIP archive.
 #[derive(Debug, Clone, ValueEnum, Copy, PartialEq, Eq)]
 pub enum Compression {
+    /// No compression.
     Stored,
+    /// Use Deflate compression.
     Deflate,
+    /// Use Bzip2 compression.
     Bzip,
+    /// Use LZMA compression.
     Lzma,
+    /// Use ZSTD compression.
     Zstd,
+    /// Use XZ compression.
     Xz,
 }
 
+/// Conversion from [Compression] into [async_zip::Compression]
 impl From<Compression> for AsyncCompression {
     fn from(c: Compression) -> Self {
         match c {
@@ -120,18 +149,27 @@ impl From<Compression> for AsyncCompression {
     }
 }
 
+/// Maximum files allowed in a non ZIP64 ZIP file.
 const MAX_FILES_IN_ZIP: u16 = u16::MAX;
+/// Maximum size of file allowed allowed in a non ZIP64 ZIP file.
 const MAX_FILE_IN_ZIP_SIZE_BYTES: u32 = u32::MAX;
+/// Maximum total size of ZIP file in non ZIP64 ZIP file.
 const MAX_ZIP_FILE_SIZE_BYTES: u32 = u32::MAX;
 
+/// A single entry in the manifest file which describes
+/// a single entry in the output ZIP archive.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ManifestEntry {
+    /// S3 Object of the source object for this entry.
     pub object: S3Object,
+    /// The file name of the entry in the ZIP archive.
     pub filename_in_zip: String,
+    /// CRC32 of the source file.
     pub crc32: u32,
 }
 
 impl ManifestEntry {
+    /// Create a new [ManifestEntry] using the provided values.
     pub fn new(object: &S3Object, crc32: u32, filename_in_zip: &str) -> Self {
         ManifestEntry {
             object: object.clone(),
@@ -141,11 +179,17 @@ impl ManifestEntry {
     }
 }
 
+/// Serializes a sequence of [ManifestEntry] instances into S3 as a JSONL file. 
+///
+/// This will buffer all [ManifestEntry] records in memory and write to S3 when
+/// [ManifestFileUpload::upload_object] is called.
 pub struct ManifestFileUpload<'a> {
     buffer: cobalt_aws::s3::AsyncPutObject<'a>,
 }
 
 impl<'a> ManifestFileUpload<'a> {
+    /// Create a new [ManifestFileUpload] instance, which will write the data into
+    /// the `dst` [S3Object] when [ManifestFileUpload::upload_object] is called.
     pub fn new(client: &'a aws_sdk_s3::Client, dst: &S3Object) -> ManifestFileUpload<'a> {
         let manifest_upload = cobalt_aws::s3::AsyncPutObject::new(client, &dst.bucket, &dst.key);
         ManifestFileUpload {
@@ -153,6 +197,7 @@ impl<'a> ManifestFileUpload<'a> {
         }
     }
 
+    /// Adds the `entry` into the buffer 
     pub async fn write_manifest_entry(&mut self, entry: &ManifestEntry) -> Result<()> {
         let manifest_entry = serde_json::to_string(&entry)? + "\n";
         self.buffer
@@ -161,12 +206,15 @@ impl<'a> ManifestFileUpload<'a> {
             .map_err(Error::from)
     }
 
+    /// Writes the bytes into S3.  Calling this method twice will cause
+    /// an [Err] to be returned.
     pub async fn upload_object(&mut self) -> Result<()> {
         self.buffer.close().await.map_err(Error::from)
     }
 }
 
-/// Type of write to do
+/// Type of write to do. By reading the [Whole] file
+/// into memory a `Data descriptor` record is not needed.
 enum ZipWrite {
     /// Stream the file into the Zip
     Stream,
@@ -174,6 +222,9 @@ enum ZipWrite {
     Whole,
 }
 
+/// An [Archiver] allows the creation of a ZIP archive
+/// in S3 allowing control of what and how the data
+/// is written into S3.
 #[derive(Debug, TypedBuilder)]
 pub struct Archiver<'a> {
     #[builder(default)]
@@ -188,6 +239,11 @@ pub struct Archiver<'a> {
 }
 
 impl<'a> Archiver<'a> {
+    /// Returns the [ZipWrite] type based on
+    /// if the [Archiver] was created with
+    /// `data_descriptors` set to true of false.
+    /// `data_descriptors` set to true will return
+    /// [ZipWrite::Stream] else [ZipWrite::Whole].
     fn entry_write_type(&self) -> ZipWrite {
         if self.data_descriptors {
             ZipWrite::Stream
@@ -196,6 +252,11 @@ impl<'a> Archiver<'a> {
         }
     }
 
+    /// Creates a ZIP archive in S3 at the `output_location`
+    /// using the `client` from the `src` [S3Objects].
+    /// Optionally a `manifest` object is create in S3 which
+    /// contains details of the files which have been added
+    /// into the archive.
     pub async fn create_zip<I>(
         &self,
         client: &aws_sdk_s3::Client,
@@ -349,6 +410,12 @@ impl<'a> Archiver<'a> {
     }
 }
 
+/// Validates that all the src files [ManifestEntry] records in the
+/// manifest files exist and the CRC32 values match.
+/// The `fetch_concurrency` in the number of source files that will
+/// be fetched concurrently from S3.
+/// The `validate_concurrency` is the number of source files that will
+/// be validated concurrently.
 pub async fn validate_manifest_file(
     client: &aws_sdk_s3::Client,
     manifest_file: &S3Object,
@@ -404,6 +471,9 @@ pub async fn validate_manifest_file(
         .await
 }
 
+/// Validate each ZIP entry by reading each [ManifestEntry] from the `manifest` file
+/// and ensuring that the CRC32 of bytes in the ZIP archive match those recorded in the
+/// manifest file.
 pub async fn validate_zip_entry_bytes(
     client: &aws_sdk_s3::Client,
     manifest_file: &S3Object,
@@ -468,6 +538,8 @@ pub async fn validate_zip_entry_bytes(
     Ok(())
 }
 
+/// Validate that the `filename` and `crc32`
+/// match the `manifest_entry`.
 fn validate_manifest_entry(
     manifest_entry: &ManifestEntry,
     filename: &str,
@@ -486,6 +558,9 @@ fn validate_manifest_entry(
     Ok(())
 }
 
+/// Validate that the CRC32 value and filenames in each [ManifestEntry]
+/// in the `manifest_file` matches those in the central directory
+/// of the `zip_file`.
 pub async fn validate_zip_central_dir(
     client: &aws_sdk_s3::Client,
     manifest_file: &S3Object,
