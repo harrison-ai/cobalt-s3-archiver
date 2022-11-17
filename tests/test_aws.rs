@@ -219,7 +219,7 @@ async fn test_s3objectseekableread() {
     upload.write_all(&vec![0; data_len]).await.unwrap();
     upload.close().await.unwrap();
 
-    let dst_obj = S3Object::new(&test_bucket, &dst_key);
+    let dst_obj = S3Object::new(test_bucket, &dst_key);
     let mut read = S3ObjectSeekableRead::new(&client, &dst_obj, None)
         .await
         .unwrap();
@@ -250,7 +250,7 @@ async fn test_s3objectseekableread_seek() {
     upload.write_all(&vec![0; data_len]).await.unwrap();
     upload.close().await.unwrap();
 
-    let dst_obj = S3Object::new(&test_bucket, &dst_key);
+    let dst_obj = S3Object::new(test_bucket, &dst_key);
     let mut read = S3ObjectSeekableRead::new(&client, &dst_obj, None)
         .await
         .unwrap();
@@ -283,7 +283,7 @@ async fn test_s3objectseekableread_seek_jump() {
     upload.write_all(&vec![0; data_len]).await.unwrap();
     upload.close().await.unwrap();
 
-    let dst_obj = S3Object::new(&test_bucket, &dst_key);
+    let dst_obj = S3Object::new(test_bucket, &dst_key);
     let mut read = S3ObjectSeekableRead::new(&client, &dst_obj, None)
         .await
         .unwrap();
