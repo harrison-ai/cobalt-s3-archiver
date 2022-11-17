@@ -12,7 +12,7 @@ use std::task::Context;
 pin_project! {
 #[must_use = "sinks do nothing unless polled"]
 /// A [Sink] that will calculate the CRC32 of any
-/// [`AsRef<[u8]>`].
+/// `AsRef<[u8]>`.
 ///
 /// ```rust
 /// # use s3_archiver::checksum::CRC32Sink;
