@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 authors = ["harrison.ai Data Engineering <dataengineering@harrison.ai>"]
 publish = false
+description = "A library and cli tool to create and validate ZIP archives in S3"
+repository = "https://github.com/harrison-ai/cobalt-s3-archiver"
+keywords = [ "s3", "compression", "zip", "archive" ]
+categories = ["command-line-utilities", "compression"]
+rust-version = "1.65"
 
 
 [features]
