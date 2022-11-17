@@ -1,3 +1,5 @@
+//! Module for checksum calculation.
+
 use std::marker::PhantomData;
 use std::task::Poll;
 
@@ -12,7 +14,7 @@ pin_project! {
 /// A [Sink] that will calculate the CRC32 of any
 /// [`AsRef<[u8]>`].
 ///
-/// ```
+/// ```rust
 /// # use s3_archiver::checksum::CRC32Sink;
 /// # use futures::sink::SinkExt;
 /// # use tokio_test;
@@ -27,7 +29,7 @@ pin_project! {
 /// ```
 /// Attempting to get the [value](`CRC32Sink::value`) of of the [Sink] before
 /// calling [Sink::poll_close] results in a [None] being returned
-/// ```
+/// ```rust
 /// # use s3_archiver::checksum::CRC32Sink;
 /// # use futures::sink::SinkExt;
 /// # use tokio_test;
