@@ -404,11 +404,12 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
 
 type GetObjectFuture<'a> = BoxFuture<'a, Result<GetObjectOutput, SdkError<GetObjectError>>>;
 
-/// A implementation of `AsyncRead` and `AsyncSeek` for a object in S3.
-/// Seeking is achieved using S3 byte range requests.  This implement
+/// A implementation of `AsyncRead` and `AsyncSeek` for an object in S3.
+/// Seeking is achieved using S3 byte range requests.  This implementation
 /// is best suited for use cases where the seeks are mostly monotonically increasing.
-/// If the next seek is less that `bytes_before_fetch` from the current position
-/// the bytes will be read from S3 (and discarded) until that position is reached.
+/// If the next seek is less that `bytes_before_fetch` from the current position,
+/// bytes will be read (and discarded) from the current request until that position is reached.
+/// Otherwise, a new byte range request will be created starting from the new position.
 pub struct S3ObjectSeekableRead<'a> {
     client: &'a Client,
     src: &'a S3Object,
