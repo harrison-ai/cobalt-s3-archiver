@@ -21,7 +21,7 @@ use tracing::{event, instrument, Level};
 
 use crate::S3Object;
 
-/// Convince wrapper for boxed future
+/// Convenience wrapper for boxed future
 type MultipartUploadFuture<'a> =
     BoxFuture<'a, Result<(UploadPartOutput, i32), SdkError<UploadPartError>>>;
 /// Convince wrapper for boxed future
