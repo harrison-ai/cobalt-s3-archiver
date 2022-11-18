@@ -24,7 +24,7 @@ use crate::S3Object;
 /// Convenience wrapper for boxed future
 type MultipartUploadFuture<'a> =
     BoxFuture<'a, Result<(UploadPartOutput, i32), SdkError<UploadPartError>>>;
-/// Convince wrapper for boxed future
+/// Convenience wrapper for boxed future
 type CompleteMultipartUploadFuture<'a> =
     BoxFuture<'a, Result<CompleteMultipartUploadOutput, SdkError<CompleteMultipartUploadError>>>;
 
