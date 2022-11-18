@@ -27,7 +27,7 @@ pin_project! {
 /// # });
 ///
 /// ```
-/// Attempting to get the [value](`CRC32Sink::value`) of of the [Sink] before
+/// Attempting to get the [value](`CRC32Sink::value`) of the [Sink] before
 /// calling [Sink::poll_close] results in a [None] being returned
 /// ```rust
 /// # use s3_archiver::checksum::CRC32Sink;
