@@ -252,7 +252,7 @@ impl<'a> Archiver<'a> {
     }
 
     /// Creates a ZIP archive in S3 at the `output_location`
-    /// using the `client` from the `src` [S3Object].
+    /// using the `client` from the `srcs` [S3Object]s.
     /// Optionally a `manifest` object is create in S3 which
     /// contains details of the files which have been added
     /// into the archive.
