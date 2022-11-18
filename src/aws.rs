@@ -54,6 +54,8 @@ enum AsyncMultipartUploadState<'a> {
 
 /// Configuration for the AsyncMultipartUpload which
 /// is separate from the state.
+/// This was to work around borrowing of two disjoint fields
+/// allowing this structure to be cloned.
 #[derive(Clone, Debug)]
 struct AsyncMultipartUploadConfig<'a> {
     client: &'a Client,
