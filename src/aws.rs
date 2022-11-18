@@ -457,7 +457,7 @@ enum S3SeekState<'a> {
     Pending,
     /// The `GetObject` request has been made.
     Fetching(GetObjectFuture<'a>),
-    /// The `GetObject` request has complete and
+    /// The `GetObject` request has completed and
     /// the bytes are being read from S3.
     Reading(Pin<Box<dyn AsyncRead>>),
     /// The bytes are being from S3 but
