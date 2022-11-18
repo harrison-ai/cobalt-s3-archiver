@@ -69,7 +69,7 @@ struct AsyncMultipartUploadConfig<'a> {
 ///
 /// ## Note
 /// On failure the multipart upload is not aborted. It is up to the
-/// caller to call the S3 `abortMultipartUpload` method when required.
+/// caller to call the S3 `abortMultipartUpload` API when required.
 pub struct AsyncMultipartUpload<'a> {
     config: AsyncMultipartUploadConfig<'a>,
     state: AsyncMultipartUploadState<'a>,
