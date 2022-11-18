@@ -409,8 +409,8 @@ impl<'a> Archiver<'a> {
     }
 }
 
-/// Validates that all the src files [ManifestEntry] records in the
-/// manifest files exist and the CRC32 values match.
+/// Validates that all the src files from [ManifestEntry] records in the
+/// manifest file exist, and that their CRC32 values match the value in the manifest.
 /// The `fetch_concurrency` in the number of source files that will
 /// be fetched concurrently from S3.
 /// The `validate_concurrency` is the number of source files that will
