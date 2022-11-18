@@ -460,8 +460,8 @@ enum S3SeekState<'a> {
     /// The `GetObject` request has completed and
     /// the bytes are being read from S3.
     Reading(Pin<Box<dyn AsyncRead>>),
-    /// The bytes are being from S3 but
-    /// to reach the position for the seek.
+    /// The bytes are being read from S3 and discarded,
+    /// to reach the position for a new seek.
     Seeking(Pin<Box<dyn AsyncRead>>, u64),
     None,
 }
