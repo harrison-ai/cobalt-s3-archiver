@@ -28,7 +28,7 @@ pin_project! {
     ///
     ///## Note
     ///The count is stored as a [u128] and unchecked addition
-    ///is use to increment the count which means wrapping a
+    ///is used to increment the count, which means wrapping a
     ///long running [AsyncWrite] may lead to an overflow.
     #[derive(Debug)]
     pub struct ByteCounter<T:AsyncWrite> {
