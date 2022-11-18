@@ -28,7 +28,7 @@ pin_project! {
     ///
     ///## Note
     ///The count is stored as a [u128] and unchecked addition
-    ///is used to increment the count, which means wrapping a
+    ///is use to increment the count which means wrapping a
     ///long running [AsyncWrite] may lead to an overflow.
     #[derive(Debug)]
     pub struct ByteCounter<T:AsyncWrite> {
@@ -57,7 +57,7 @@ impl<T: AsyncWrite> ByteCounter<T> {
 
     /// Returns the inner [AsyncWrite], consuming
     /// this [Self].
-    pub fn to_inner(self) -> T {
+    pub fn into_inner(self) -> T {
         self.inner
     }
 }
@@ -97,7 +97,7 @@ pin_project! {
     ///
     ///## Note
     ///The count is stored as a [u128] and unchecked addition
-    ///is used to increment the count, which means wrapping a
+    ///is use to increment the count which means wrapping a
     ///long running [AsyncWrite] may lead to an overflow.
     #[derive(Debug)]
     pub struct ByteLimit<T:AsyncWrite> {
@@ -127,7 +127,7 @@ impl<T: AsyncWrite> ByteLimit<T> {
     }
 
     /// Returns the inner [ByteCounter] consuming the [Self].
-    pub fn to_innner(self) -> ByteCounter<T> {
+    pub fn into_innner(self) -> ByteCounter<T> {
         self.counter
     }
 }
@@ -194,7 +194,7 @@ mod tests {
         let mut counter = ByteLimit::new_from_inner(buffer, 100);
         let bytes_to_write = 100_usize;
         assert!(counter.write_all(&vec![0; bytes_to_write]).await.is_ok());
-        let counter = counter.to_innner();
+        let counter = counter.into_innner();
         assert_eq!(counter.byte_count(), bytes_to_write as u128);
     }
 }
