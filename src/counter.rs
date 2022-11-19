@@ -1,3 +1,6 @@
+//! Module holding utilities related to counts
+//! of bytes passed to [AsyncWrite].
+
 use std::task::Poll;
 
 use futures::ready;
@@ -8,7 +11,25 @@ use std::pin::Pin;
 use std::task::Context;
 
 pin_project! {
-    ///An AyncWrite which counts bytes written.
+    ///An [AsyncWrite] which counts bytes written to the
+    ///wrapped [AsyncWrite].
+    ///```rust
+    /// # use s3_archiver::counter::ByteCounter;
+    /// # use futures::AsyncWriteExt;
+    /// # use futures::io::sink;
+    /// # use tokio_test;
+    /// # tokio_test::block_on(async {
+    ///      let mut counter = ByteCounter::new(sink());
+    ///      counter.write("this is a test".as_bytes()).await?;
+    ///      assert_eq!(14, counter.byte_count());
+    ///      # Ok::<(), anyhow::Error>(())
+    /// # });
+    ///````
+    ///
+    ///## Note
+    ///The count is stored as a [u128] and unchecked addition
+    ///is use to increment the count which means wrapping a
+    ///long running [AsyncWrite] may lead to an overflow.
     #[derive(Debug)]
     pub struct ByteCounter<T:AsyncWrite> {
         byte_count: u128,
@@ -18,6 +39,9 @@ pin_project! {
 }
 
 impl<T: AsyncWrite> ByteCounter<T> {
+    /// Returns a new ByteCounter
+    /// wrapping the inner [AsyncWrite], with
+    /// the byte count initialised to 0.
     pub fn new(inner: T) -> Self {
         ByteCounter {
             byte_count: 0,
@@ -25,11 +49,15 @@ impl<T: AsyncWrite> ByteCounter<T> {
         }
     }
 
+    /// Returns the current count of bytes
+    /// written into the [AsyncWrite].
     pub fn byte_count(&self) -> u128 {
         self.byte_count
     }
 
-    pub fn to_inner(self) -> T {
+    /// Returns the inner [AsyncWrite], consuming
+    /// this [Self].
+    pub fn into_inner(self) -> T {
         self.inner
     }
 }
@@ -54,6 +82,23 @@ impl<T: AsyncWrite> AsyncWrite for ByteCounter<T> {
 pin_project! {
     ///An AyncWrite which raises an Error if the number of bytes
     ///written is more that the `byte_limit`
+    ///```rust
+    /// # use s3_archiver::counter::ByteLimit;
+    /// # use futures::AsyncWriteExt;
+    /// # use futures::io::sink;
+    /// # use tokio_test;
+    /// # tokio_test::block_on(async {
+    ///      let mut counter = ByteLimit::new_from_inner(sink(), 10);
+    ///      counter.write("this is a ".as_bytes()).await?;
+    ///      assert!(counter.write("error".as_bytes()).await.is_err());
+    ///      # Ok::<(), anyhow::Error>(())
+    /// # });
+    ///````
+    ///
+    ///## Note
+    ///The count is stored as a [u128] and unchecked addition
+    ///is use to increment the count which means wrapping a
+    ///long running [AsyncWrite] may lead to an overflow.
     #[derive(Debug)]
     pub struct ByteLimit<T:AsyncWrite> {
         byte_limit: u128,
@@ -63,6 +108,8 @@ pin_project! {
 }
 
 impl<T: AsyncWrite> ByteLimit<T> {
+    /// Creates a new [ByteLimit] using the provided [ByteCounter]
+    /// which will raise an error when the `byte_limit` is exceeded.
     pub fn new(counter: ByteCounter<T>, byte_limit: u128) -> Self {
         ByteLimit {
             byte_limit,
@@ -71,7 +118,7 @@ impl<T: AsyncWrite> ByteLimit<T> {
     }
 
     /// Convenience method to create a `ByteLimit` and `ByteCounter`
-    /// from the wrapped inner `AsyncWrite`.
+    /// from the inner `AsyncWrite`.
     pub fn new_from_inner(inner: T, byte_limit: u128) -> Self {
         ByteLimit {
             byte_limit,
@@ -79,7 +126,8 @@ impl<T: AsyncWrite> ByteLimit<T> {
         }
     }
 
-    pub fn to_innner(self) -> ByteCounter<T> {
+    /// Returns the inner [ByteCounter] consuming the [Self].
+    pub fn into_innner(self) -> ByteCounter<T> {
         self.counter
     }
 }
@@ -146,7 +194,7 @@ mod tests {
         let mut counter = ByteLimit::new_from_inner(buffer, 100);
         let bytes_to_write = 100_usize;
         assert!(counter.write_all(&vec![0; bytes_to_write]).await.is_ok());
-        let counter = counter.to_innner();
+        let counter = counter.into_innner();
         assert_eq!(counter.byte_count(), bytes_to_write as u128);
     }
 }

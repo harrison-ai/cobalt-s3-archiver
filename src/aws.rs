@@ -1,3 +1,5 @@
+//! Provides ways of interacting with objects in S3.
+
 use anyhow::Context as anyContext;
 use aws_sdk_s3::error::{CompleteMultipartUploadError, GetObjectError, UploadPartError};
 use aws_sdk_s3::model::CompletedMultipartUpload;
@@ -19,11 +21,14 @@ use tracing::{event, instrument, Level};
 
 use crate::S3Object;
 
+/// Convenience wrapper for boxed future
 type MultipartUploadFuture<'a> =
     BoxFuture<'a, Result<(UploadPartOutput, i32), SdkError<UploadPartError>>>;
+/// Convenience wrapper for boxed future
 type CompleteMultipartUploadFuture<'a> =
     BoxFuture<'a, Result<CompleteMultipartUploadOutput, SdkError<CompleteMultipartUploadError>>>;
 
+/// Holds state for the [AsyncMultipartUpload]
 enum AsyncMultipartUploadState<'a> {
     ///Bytes are being written
     Writing {
@@ -47,6 +52,10 @@ enum AsyncMultipartUploadState<'a> {
     Closed,
 }
 
+/// Configuration for the AsyncMultipartUpload which
+/// is separate from the state.
+/// This was to work around borrowing of two disjoint fields
+/// allowing this structure to be cloned.
 #[derive(Clone, Debug)]
 struct AsyncMultipartUploadConfig<'a> {
     client: &'a Client,
@@ -57,17 +66,34 @@ struct AsyncMultipartUploadConfig<'a> {
     max_uploading_parts: usize,
 }
 
+/// A implementation of [AsyncWrite] for S3 objects using multipart uploads.
+/// By using multipart uploads constant memory usage can be achieved.
+///
+/// ## Note
+/// On failure the multipart upload is not aborted. It is up to the
+/// caller to call the S3 `abortMultipartUpload` API when required.
 pub struct AsyncMultipartUpload<'a> {
     config: AsyncMultipartUploadConfig<'a>,
     state: AsyncMultipartUploadState<'a>,
 }
 
+/// Minimum size of a multipart upload.
 const MIN_PART_SIZE: usize = 5_usize * MIB as usize; // 5 Mib
+/// Maximum size of a multipart upload.
 const MAX_PART_SIZE: usize = 5_usize * GIB as usize; // 5 Gib
 
+/// Default number of part which can be uploaded
+/// concurrently.
 const DEFAULT_MAX_UPLOADING_PARTS: usize = 100;
 
 impl<'a> AsyncMultipartUpload<'a> {
+    /// Create a new [AsyncMultipartUpload].
+    ///
+    /// * `client`              - S3 client to use.
+    /// * `bucket`              - Bucket to write the object into.
+    /// * `key`                 - Key to write the object into.
+    /// * `part_size`           - How large, in bytes, each part should be.
+    /// * `max_uploading_parts` - How many parts to upload concurrently.
     #[instrument(skip(client))]
     pub async fn new(
         client: &'a Client,
@@ -380,6 +406,12 @@ impl<'a> AsyncWrite for AsyncMultipartUpload<'a> {
 
 type GetObjectFuture<'a> = BoxFuture<'a, Result<GetObjectOutput, SdkError<GetObjectError>>>;
 
+/// A implementation of `AsyncRead` and `AsyncSeek` for an object in S3.
+/// Seeking is achieved using S3 byte range requests.  This implementation
+/// is best suited for use cases where the seeks are mostly monotonically increasing.
+/// If the next seek is less that `bytes_before_fetch` from the current position,
+/// bytes will be read (and discarded) from the current request until that position is reached.
+/// Otherwise, a new byte range request will be created starting from the new position.
 pub struct S3ObjectSeekableRead<'a> {
     client: &'a Client,
     src: &'a S3Object,
@@ -391,6 +423,12 @@ pub struct S3ObjectSeekableRead<'a> {
 
 impl<'a> S3ObjectSeekableRead<'a> {
     #[instrument(skip(client))]
+    /// Create a new [S3ObjectSeekableRead]
+    ///
+    /// * `client` - A [Client] to use
+    /// * `src` - The S3 Object to read.
+    /// * `bytes_before_fetch` - The number of bytes the new seek position must be
+    /// infront of the current position before a new S3 `GetObject` request is made.
     pub async fn new(
         client: &'a Client,
         src: &'a S3Object,
@@ -415,10 +453,17 @@ impl<'a> S3ObjectSeekableRead<'a> {
     }
 }
 
+/// State for [S3ObjectSeekableRead]
 enum S3SeekState<'a> {
+    /// The Request has not yet started.
     Pending,
+    /// The `GetObject` request has been made.
     Fetching(GetObjectFuture<'a>),
+    /// The `GetObject` request has completed and
+    /// the bytes are being read from S3.
     Reading(Pin<Box<dyn AsyncRead>>),
+    /// The bytes are being read from S3 and discarded,
+    /// to reach the position for a new seek.
     Seeking(Pin<Box<dyn AsyncRead>>, u64),
     None,
 }
@@ -493,7 +538,7 @@ impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
 impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
     #[instrument(level = "trace", skip(self))]
     fn start_seek(mut self: Pin<&mut Self>, position: std::io::SeekFrom) -> std::io::Result<()> {
-        //Set State to Pending and calculate current possition
+        //Set State to Pending and calculate current position
         use std::io::SeekFrom::*;
 
         let new_pos = match position {

@@ -1,3 +1,5 @@
+//! Module for checksum calculation.
+
 use std::marker::PhantomData;
 use std::task::Poll;
 
@@ -9,6 +11,35 @@ use std::task::Context;
 
 pin_project! {
 #[must_use = "sinks do nothing unless polled"]
+/// A [Sink] that will calculate the CRC32 of any
+/// `AsRef<[u8]>`.
+///
+/// ```rust
+/// # use s3_archiver::checksum::CRC32Sink;
+/// # use futures::sink::SinkExt;
+/// # use tokio_test;
+/// # tokio_test::block_on(async {
+///      let mut sink = CRC32Sink::default();
+///      sink.send("this is a test".as_bytes()).await?;
+///      sink.close().await.unwrap();
+///      assert_eq!(220129258, sink.value().unwrap());
+///      # Ok::<(), anyhow::Error>(())
+/// # });
+///
+/// ```
+/// Attempting to get the [value](`CRC32Sink::value`) of the [Sink] before
+/// calling [Sink::poll_close] results in a [None] being returned
+/// ```rust
+/// # use s3_archiver::checksum::CRC32Sink;
+/// # use futures::sink::SinkExt;
+/// # use tokio_test;
+/// # tokio_test::block_on(async {
+///      let mut sink = CRC32Sink::default();
+///      sink.send("this is a test".as_bytes()).await?;
+///      assert!(sink.value().is_none());
+///      # Ok::<(), anyhow::Error>(())
+/// # });
+///
 pub struct CRC32Sink<Item: AsRef<[u8]>> {
     digest: Option<Hasher>,
     value: Option<u32>,
@@ -18,7 +49,7 @@ pub struct CRC32Sink<Item: AsRef<[u8]>> {
 }
 
 impl<Item: AsRef<[u8]>> CRC32Sink<Item> {
-    //The generated digest needs to live as long as the crc.
+    /// Produces a new CRC32Sink.
     pub fn new() -> CRC32Sink<Item> {
         CRC32Sink {
             digest: Some(Hasher::new()),
@@ -27,6 +58,8 @@ impl<Item: AsRef<[u8]>> CRC32Sink<Item> {
         }
     }
 
+    /// Returns the crc32 of the values passed into the
+    /// [Sink] once the [Sink] has been closed.
     pub fn value(&self) -> Option<u32> {
         self.value
     }
@@ -38,8 +71,8 @@ impl<Item: AsRef<[u8]>> Default for CRC32Sink<Item> {
     }
 }
 
-/// Futures crate provides a into_sink for AsyncWrite but it is
-/// not possible to get the value out of it afterwards.
+/// The [futures] crate provides a [into_sink](futures::io::AsyncWriteExt::into_sink) for AsyncWrite but it is
+/// not possible to get the value out of it afterwards as it takes ownership.
 impl<Item: AsRef<[u8]>> futures::sink::Sink<Item> for CRC32Sink<Item> {
     type Error = anyhow::Error;
 
