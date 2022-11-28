@@ -3,6 +3,7 @@ pub mod common;
 use ::function_name::named;
 use assert_cmd::Command;
 use bytesize::MIB;
+use cobalt_aws::s3::S3Object;
 use common::aws::S3TestClient;
 use common::fixtures;
 use std::collections::HashMap;
@@ -55,7 +56,7 @@ async fn test_cli_run() {
         .unwrap();
 
     let dst_key = fixtures::gen_random_file_name(&mut rng);
-    let dst_obj = s3_archiver::S3Object::new("dst-bucket", &dst_key);
+    let dst_obj = S3Object::new("dst-bucket", &dst_key);
     fixtures::create_bucket(&client, &dst_obj.bucket)
         .await
         .unwrap();
@@ -98,7 +99,7 @@ async fn test_cli_run_with_size() {
         .unwrap();
 
     let dst_key = fixtures::gen_random_file_name(&mut rng);
-    let dst_obj = s3_archiver::S3Object::new("dst-bucket", &dst_key);
+    let dst_obj = S3Object::new("dst-bucket", &dst_key);
     fixtures::create_bucket(&client, &dst_obj.bucket)
         .await
         .unwrap();
@@ -143,7 +144,7 @@ async fn test_cli_run_with_src_fetch_buffer() {
         .unwrap();
 
     let dst_key = fixtures::gen_random_file_name(&mut rng);
-    let dst_obj = s3_archiver::S3Object::new("dst-bucket", &dst_key);
+    let dst_obj = S3Object::new("dst-bucket", &dst_key);
     fixtures::create_bucket(&client, &dst_obj.bucket)
         .await
         .unwrap();
@@ -188,12 +189,12 @@ async fn test_cli_run_with_src_manifest() {
         .unwrap();
 
     let dst_key = fixtures::gen_random_file_name(&mut rng);
-    let dst_obj = s3_archiver::S3Object::new("dst-bucket", &dst_key);
+    let dst_obj = S3Object::new("dst-bucket", &dst_key);
     fixtures::create_bucket(&client, &dst_obj.bucket)
         .await
         .unwrap();
     let manifest_key = fixtures::gen_random_file_name(&mut rng);
-    let manifest_obj = s3_archiver::S3Object::new("dst-bucket", &manifest_key);
+    let manifest_obj = S3Object::new("dst-bucket", &manifest_key);
     let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
     cmd.arg("archive");
     cmd.arg(Url::try_from(&dst_obj).unwrap().as_str());
@@ -249,7 +250,7 @@ async fn test_cli_no_trailing_slash_prefix() {
     let mut rng = fixtures::seeded_rng(function_name!());
 
     let dst_key = fixtures::gen_random_file_name(&mut rng);
-    let dst_obj = s3_archiver::S3Object::new("dst-bucket", &dst_key);
+    let dst_obj = S3Object::new("dst-bucket", &dst_key);
     fixtures::create_bucket(&client, &dst_obj.bucket)
         .await
         .unwrap();
@@ -270,7 +271,7 @@ async fn test_cli_has_leading_slash_prefix() {
     let mut rng = fixtures::seeded_rng(function_name!());
 
     let dst_key = fixtures::gen_random_file_name(&mut rng);
-    let dst_obj = s3_archiver::S3Object::new("dst-bucket", &dst_key);
+    let dst_obj = S3Object::new("dst-bucket", &dst_key);
     fixtures::create_bucket(&client, &dst_obj.bucket)
         .await
         .unwrap();
@@ -291,7 +292,7 @@ async fn test_invalid_s3_src() {
     let mut rng = fixtures::seeded_rng(function_name!());
 
     let dst_key = fixtures::gen_random_file_name(&mut rng);
-    let dst_obj = s3_archiver::S3Object::new("dst-bucket", &dst_key);
+    let dst_obj = S3Object::new("dst-bucket", &dst_key);
     fixtures::create_bucket(&client, &dst_obj.bucket)
         .await
         .unwrap();
@@ -313,7 +314,7 @@ async fn test_invalid_part_size_0b() {
     let mut rng = fixtures::seeded_rng(function_name!());
 
     let dst_key = fixtures::gen_random_file_name(&mut rng);
-    let dst_obj = s3_archiver::S3Object::new("dst-bucket", &dst_key);
+    let dst_obj = S3Object::new("dst-bucket", &dst_key);
     fixtures::create_bucket(&client, &dst_obj.bucket)
         .await
         .unwrap();
@@ -335,7 +336,7 @@ async fn test_invalid_part_size_1k() {
     let mut rng = fixtures::seeded_rng(function_name!());
 
     let dst_key = fixtures::gen_random_file_name(&mut rng);
-    let dst_obj = s3_archiver::S3Object::new("dst-bucket", &dst_key);
+    let dst_obj = S3Object::new("dst-bucket", &dst_key);
     fixtures::create_bucket(&client, &dst_obj.bucket)
         .await
         .unwrap();
@@ -357,9 +358,9 @@ async fn test_manifest_file_and_generate() {
     let mut rng = fixtures::seeded_rng(function_name!());
 
     let dst_key = fixtures::gen_random_file_name(&mut rng);
-    let dst_obj = s3_archiver::S3Object::new("dst-bucket", &dst_key);
+    let dst_obj = S3Object::new("dst-bucket", &dst_key);
     let manifest_key = fixtures::gen_random_file_name(&mut rng);
-    let manifest_obj = s3_archiver::S3Object::new("dst-bucket", &manifest_key);
+    let manifest_obj = S3Object::new("dst-bucket", &manifest_key);
     fixtures::create_bucket(&client, &dst_obj.bucket)
         .await
         .unwrap();

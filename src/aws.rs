@@ -19,7 +19,7 @@ use tokio::io::{AsyncRead, AsyncSeek};
 use aws_sdk_s3::Client;
 use tracing::{event, instrument, Level};
 
-use crate::S3Object;
+use cobalt_aws::s3::S3Object;
 
 /// Convenience wrapper for boxed future
 type MultipartUploadFuture<'a> =

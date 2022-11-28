@@ -4,12 +4,13 @@ use std::io::SeekFrom;
 
 use ::function_name::named;
 use bytesize::MIB;
+use cobalt_aws::s3::S3Object;
 use common::aws::S3TestClient;
 use common::fixtures;
 use futures::prelude::*;
 use s3_archiver::aws::{AsyncMultipartUpload, S3ObjectSeekableRead};
-use s3_archiver::S3Object;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
 #[cfg(feature = "test_containers")]
 use {futures::lock::Mutex, futures::stream, std::sync::Arc};
 

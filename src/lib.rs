@@ -3,17 +3,17 @@ pub mod aws;
 pub mod checksum;
 pub mod counter;
 
-use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::counter::ByteLimit;
 use anyhow::Error;
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{ensure, Context, Result};
 use async_zip::{Compression as AsyncCompression, ZipEntryBuilder};
 use aws::AsyncMultipartUpload;
 use aws_sdk_s3::output::GetObjectOutput;
 use checksum::CRC32Sink;
 use clap::ValueEnum;
+use cobalt_aws::s3::S3Object;
 use futures::future;
 use futures::lock::Mutex;
 use futures::prelude::*;
@@ -23,98 +23,6 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio_stream::wrappers::LinesStream;
 use tokio_util::compat::FuturesAsyncWriteCompatExt;
 use typed_builder::TypedBuilder;
-use url::Url;
-
-/// A bucket key pair for a S3Object, with conversion from S3 urls.
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub struct S3Object {
-    /// The bucket the object is in.
-    pub bucket: String,
-    /// The key the in the bucket for the object.
-    pub key: String,
-}
-
-impl S3Object {
-    /// Create a new [S3Object] using anything which can be
-    /// treated as [&str].  Any leading `/` will be trimmed from
-    /// the key.  No validation is done against the bucket or key
-    /// to ensure they meet the AWS requirements.
-    pub fn new(bucket: impl AsRef<str>, key: impl AsRef<str>) -> Self {
-        S3Object {
-            bucket: bucket.as_ref().to_owned(),
-            key: key.as_ref().trim_start_matches('/').to_owned(),
-        }
-    }
-}
-
-/// Convert from an [Url] into a [S3Object]. The scheme
-/// must be `s3` and the `path` must not be empty.
-impl TryFrom<url::Url> for S3Object {
-    type Error = Error;
-
-    fn try_from(value: url::Url) -> Result<Self, Self::Error> {
-        if value.scheme() != "s3" {
-            bail!("S3 URL must have a scheme of s3")
-        }
-        let bucket = value.host_str().context("S3 URL must have host")?;
-        let key = value.path();
-
-        if key.is_empty() {
-            bail!("S3 URL must have a path")
-        }
-        Ok(S3Object::new(bucket, key))
-    }
-}
-
-/// Convert from a [&str] into a [S3Object].
-/// The [&str] must be a valid `S3` [Url].
-impl TryFrom<&str> for S3Object {
-    type Error = Error;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        value.parse::<Url>()?.try_into()
-    }
-}
-
-/// Covert from [String] into a [S3Object].
-/// The [String] must be a valid `S3` [Url].
-impl TryFrom<String> for S3Object {
-    type Error = Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        value.parse::<Url>()?.try_into()
-    }
-}
-
-/// Covert from [&str] into a [S3Object].
-/// The [&str] must be a valid `S3` [Url].
-impl FromStr for S3Object {
-    type Err = Error;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        value.parse::<Url>()?.try_into()
-    }
-}
-
-/// Converts from a [S3Object] into a [Url].
-/// If the [S3Object] holds an invalid path or
-/// domain the conversion will fail.
-impl TryFrom<S3Object> for Url {
-    type Error = url::ParseError;
-    fn try_from(obj: S3Object) -> std::result::Result<Self, Self::Error> {
-        Url::parse(&format!("s3://{}/{}", obj.bucket, obj.key))
-    }
-}
-
-/// Converts from a [S3Object] into a [Url].
-/// If the [S3Object] holds an invalid path or
-/// domain the conversion will fail.
-impl TryFrom<&S3Object> for Url {
-    type Error = url::ParseError;
-    fn try_from(obj: &S3Object) -> std::result::Result<Self, Self::Error> {
-        Url::parse(&format!("s3://{}/{}", obj.bucket, obj.key))
-    }
-}
 
 /// The compression algorithms that are available to be used
 /// to compress entries in the ZIP archive.

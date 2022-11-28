@@ -1,11 +1,12 @@
 pub mod common;
 
 use ::function_name::named;
+use cobalt_aws::s3::S3Object;
 use common::aws::S3TestClient;
 use common::fixtures;
 use futures::prelude::*;
 use rand::Rng;
-use s3_archiver::{Compression, ManifestEntry, S3Object};
+use s3_archiver::{Compression, ManifestEntry};
 use std::io::prelude::*;
 
 #[tokio::test]
