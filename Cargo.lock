@@ -683,9 +683,9 @@ dependencies = [
 
 [[package]]
 name = "cobalt-aws"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fab1ea671d0d81a8d8be2cf943aa3be2a8318a074ef5c7d8ae1695e117afb3b"
+checksum = "d41be17e5ba8227837a9459556a7d028fcc498a74e0a66cba2f009052c9bcdd7"
 dependencies = [
  "anyhow",
  "async-trait",

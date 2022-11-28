@@ -126,8 +126,9 @@ async fn test_fail_failed_write() {
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
     let part_len = 5 * MIB as usize;
+    let dst = S3Object::new(test_bucket, &dst_key);
     let upload = Arc::new(Mutex::new(
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, part_len, None)
+        AsyncMultipartUpload::new(&client, &dst ,part_len, None)
             .await
             .unwrap(),
     ));
@@ -166,9 +167,10 @@ async fn test_fail_write() {
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
+    let dst = S3Object::new(test_bucket, &dst_key);
+
     let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
-            .await
+        AsyncMultipartUpload::new(&client, &dst, 5 * MIB as usize, None) .await
             .unwrap();
 
     let data_len = 6 * MIB as usize;
@@ -190,8 +192,9 @@ async fn test_fail_close() {
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
+    let dst = S3Object::new(test_bucket, &dst_key);
     let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
+        AsyncMultipartUpload::new(&client, &dst, 5 * MIB as usize, None)
             .await
             .unwrap();
 
