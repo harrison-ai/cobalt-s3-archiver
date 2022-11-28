@@ -9,10 +9,10 @@ use crate::counter::ByteLimit;
 use anyhow::Error;
 use anyhow::{ensure, Context, Result};
 use async_zip::{Compression as AsyncCompression, ZipEntryBuilder};
-use aws::AsyncMultipartUpload;
 use aws_sdk_s3::output::GetObjectOutput;
 use checksum::CRC32Sink;
 use clap::ValueEnum;
+use cobalt_aws::s3::AsyncMultipartUpload;
 use cobalt_aws::s3::S3Object;
 use futures::future;
 use futures::lock::Mutex;
@@ -186,14 +186,8 @@ impl<'a> Archiver<'a> {
         );
 
         //Create the upload and the zip writer.
-        let upload = AsyncMultipartUpload::new(
-            client,
-            &output_location.bucket,
-            &output_location.key,
-            self.part_size,
-            None,
-        )
-        .await?;
+        let upload =
+            AsyncMultipartUpload::new(client, output_location, self.part_size, None).await?;
 
         let mut byte_limit =
             ByteLimit::new_from_inner(upload, MAX_ZIP_FILE_SIZE_BYTES.into()).compat_write();
