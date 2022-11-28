@@ -66,6 +66,10 @@ validate: cargo-init ci-fmt
 	$(DCRUN) cargo deny check
 	$(DCRUN) shellcheck ./scripts/*.sh
 
+## licenses-report: Build license summary file
+licenses-report:
+	$(DCRUN) cargo about generate --output-file ./licenses/licenses.html about.hbs
+
 ## build:				build all the docker images for this service
 build:
 	$(DOCKER_BUILD) -t $(ECR_PREFIX)s3-archiver$(ECR_SUFFIX) -f ./Dockerfile .
@@ -81,3 +85,5 @@ pull:
 ## help:				show this help
 help:
 	@sed -ne '/@sed/!s/## //p' $(MAKEFILE_LIST)
+
+

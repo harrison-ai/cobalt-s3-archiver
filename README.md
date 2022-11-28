@@ -75,40 +75,4 @@ For each test a separate localstack instance is started listening on a separate 
 
 The project can be built and run using `cargo`.  To build the project use `cargo build`, to run the project `cargo run` and to install the project use `cargo install`.
 
-## Development
 
-### Basic Work Flow
-
-This repo uses the [3 Musketeers pattern](https://3musketeers.io/) to provide a consistent
-dev, test and build environment using `make` and `docker`. To get started:
-
-```
-make help
-```
-
-The source code for the service components can be found under [`./src/`](./src/).
-You can run the tests by doing:
-
-```
-make test
-```
-
-And you can apply some automated code formatting by doing:
-
-```
-make fmt
-```
-
-This project is designed to be deploy as a docker image.
-You can build all the docker image by doing:
-
-```
-make build
-```
-
-To publish the docker image to an ECR repository, set the environment variables
-`ECR_REPOSITORY` and `ECR_TAG` and then:
-
-```
-make publish
-```
