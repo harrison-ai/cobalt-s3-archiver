@@ -1,5 +1,5 @@
 [package]
-name = "s3-archiver"
+name = "cobalt-s3-archiver"
 version = "0.1.0"
 edition = "2021"
 authors = ["harrison.ai Data Engineering <dataengineering@harrison.ai>"]
