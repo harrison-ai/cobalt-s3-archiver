@@ -3,13 +3,22 @@ name = "s3-archiver"
 version = "0.1.0"
 edition = "2021"
 authors = ["harrison.ai Data Engineering <dataengineering@harrison.ai>"]
-publish = false
+publish = true
 description = "A library and CLI tool to create and validate ZIP archives in S3"
 repository = "https://github.com/harrison-ai/cobalt-s3-archiver"
 keywords = [ "s3", "compression", "zip", "archive" ]
 categories = ["command-line-utilities", "compression"]
 rust-version = "1.65"
+license = "Apache-2.0"
 
+include = [
+    "Cargo.toml",
+    "src/*",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENCE",
+    "licenses/licenses.html",
+]
 
 [features]
 default = []
