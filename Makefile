@@ -1,5 +1,5 @@
 ## 
-## Project Makefile for s3-archiver
+## Project Makefile for cobalt-s3-archiver
 ## 
 
 .DEFAULT_GOAL := help

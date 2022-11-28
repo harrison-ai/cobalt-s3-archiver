@@ -4,8 +4,9 @@ use bytesize::ByteSize;
 use clap::{Parser, Subcommand, ValueEnum};
 use cobalt_aws::config;
 use cobalt_aws::s3::S3Object;
+use cobalt_s3_archiver::Archiver;
+use cobalt_s3_archiver::Compression;
 use futures::prelude::*;
-use s3_archiver::Compression;
 use std::io::{BufRead, BufReader};
 use tracing_subscriber::EnvFilter;
 
@@ -142,8 +143,12 @@ async fn main() -> Result<()> {
         }
         Command::ValidateArchive(cmd) => match cmd.crc32_validation_type {
             CRC32ValidationType::Bytes => {
-                s3_archiver::validate_zip_entry_bytes(&client, &cmd.manifest_file, &cmd.zip_file)
-                    .await?;
+                cobalt_s3_archiver::validate_zip_entry_bytes(
+                    &client,
+                    &cmd.manifest_file,
+                    &cmd.zip_file,
+                )
+                .await?;
                 println!(
                     "The input archive {:?} bytes matched the manifest {:?}",
                     &cmd.zip_file, &cmd.manifest_file
@@ -151,8 +156,12 @@ async fn main() -> Result<()> {
                 Ok(())
             }
             CRC32ValidationType::CentralDirectory => {
-                s3_archiver::validate_zip_central_dir(&client, &cmd.manifest_file, &cmd.zip_file)
-                    .await?;
+                cobalt_s3_archiver::validate_zip_central_dir(
+                    &client,
+                    &cmd.manifest_file,
+                    &cmd.zip_file,
+                )
+                .await?;
                 println!(
                     "The input archive {:?} central directory matched the manifest {:?}",
                     &cmd.zip_file, &cmd.manifest_file
@@ -170,7 +179,7 @@ async fn main() -> Result<()> {
             let manifest_object = cmd
                 .manifest_object
                 .context("Manifest object requied if not reading from stdin")?;
-            s3_archiver::validate_manifest_file(
+            cobalt_s3_archiver::validate_manifest_file(
                 &client,
                 &manifest_object,
                 cmd.fetch_concurrency,
@@ -198,7 +207,7 @@ async fn validate_manifest_files_from_read(
 
     futures::stream::iter(objects)
         .map_ok(|m| async move {
-            s3_archiver::validate_manifest_file(
+            cobalt_s3_archiver::validate_manifest_file(
                 client,
                 &m,
                 args.fetch_concurrency,
@@ -229,7 +238,7 @@ async fn create_zip_from_read(
         .map(|x| x.map_err(anyhow::Error::from))
         .map(|x| x.and_then(S3Object::try_from));
 
-    let archiver = s3_archiver::Archiver::builder()
+    let archiver = Archiver::builder()
         .prefix_strip(args.prefix_strip.as_deref())
         .compression(args.compression)
         .part_size(usize::try_from(args.part_size.as_u64())?)

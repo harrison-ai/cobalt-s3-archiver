@@ -130,12 +130,13 @@ pub mod fixtures {
     use aws_sdk_s3::Client;
     use bytesize::MIB;
     use cobalt_aws::s3::S3Object;
+    use cobalt_s3_archiver::Archiver;
+    use cobalt_s3_archiver::Compression;
+    use cobalt_s3_archiver::ManifestEntry;
     use rand::distributions::{Alphanumeric, DistString};
     use rand::Rng;
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
-    use s3_archiver::Compression;
-    use s3_archiver::ManifestEntry;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     use typed_builder::TypedBuilder;
@@ -387,7 +388,7 @@ pub mod fixtures {
         )
         .await?;
         create_bucket(client, &args.dst_obj.bucket).await?;
-        let archiver = s3_archiver::Archiver::builder()
+        let archiver = Archiver::builder()
             .prefix_strip(args.prefix_to_strip)
             .compression(args.compression)
             .data_descriptors(args.data_descriptors)

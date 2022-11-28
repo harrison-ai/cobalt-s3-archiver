@@ -53,7 +53,7 @@ name = "s3-archiver-cli"
 path = "src/main_cli.rs"
 
 [lib]
-name = "s3_archiver"
+name = "cobalt_s3_archiver"
 path = "src/lib.rs"
 
 [dev-dependencies]
