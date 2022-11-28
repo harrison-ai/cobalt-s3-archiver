@@ -4,12 +4,14 @@ use std::io::SeekFrom;
 
 use ::function_name::named;
 use bytesize::MIB;
+use cobalt_aws::s3::AsyncMultipartUpload;
+use cobalt_aws::s3::S3Object;
 use common::aws::S3TestClient;
 use common::fixtures;
 use futures::prelude::*;
-use s3_archiver::aws::{AsyncMultipartUpload, S3ObjectSeekableRead};
-use s3_archiver::S3Object;
+use s3_archiver::aws::S3ObjectSeekableRead;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
 #[cfg(feature = "test_containers")]
 use {futures::lock::Mutex, futures::stream, std::sync::Arc};
 
@@ -25,10 +27,11 @@ async fn test_put_single_part() {
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
     let buffer_len = MIB as usize;
 
-    let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5_usize * MIB as usize, None)
-            .await
-            .unwrap();
+    let dst = S3Object::new(test_bucket, &dst_key);
+
+    let mut upload = AsyncMultipartUpload::new(&client, &dst, 5_usize * MIB as usize, None)
+        .await
+        .unwrap();
     upload.write_all(&vec![0; buffer_len]).await.unwrap();
     upload.close().await.unwrap();
     let body = fixtures::fetch_bytes(&client, &S3Object::new(test_bucket, &dst_key))
@@ -49,10 +52,10 @@ async fn test_put_10mb() {
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
     let data_len = 10 * MIB as usize;
 
-    let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
-            .await
-            .unwrap();
+    let dst = S3Object::new(test_bucket, &dst_key);
+    let mut upload = AsyncMultipartUpload::new(&client, &dst, 5 * MIB as usize, None)
+        .await
+        .unwrap();
     upload.write_all(&vec![0; data_len]).await.unwrap();
     upload.close().await.unwrap();
     let body = fixtures::fetch_bytes(&client, &S3Object::new(test_bucket, &dst_key))
@@ -72,10 +75,10 @@ async fn test_put_14mb() {
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
-    let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
-            .await
-            .unwrap();
+    let dst = S3Object::new(test_bucket, dst_key);
+    let mut upload = AsyncMultipartUpload::new(&client, &dst, 5 * MIB as usize, None)
+        .await
+        .unwrap();
 
     let data_len = 14 * MIB as usize;
 
@@ -94,10 +97,10 @@ async fn test_put_16mb_single_upload() {
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
-    let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, Some(1))
-            .await
-            .unwrap();
+    let dst = S3Object::new(test_bucket, &dst_key);
+    let mut upload = AsyncMultipartUpload::new(&client, &dst, 5 * MIB as usize, Some(1))
+        .await
+        .unwrap();
 
     let data_len = 16 * MIB as usize;
 
@@ -123,8 +126,9 @@ async fn test_fail_failed_write() {
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
     let part_len = 5 * MIB as usize;
+    let dst = S3Object::new(test_bucket, &dst_key);
     let upload = Arc::new(Mutex::new(
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, part_len, None)
+        AsyncMultipartUpload::new(&client, &dst, part_len, None)
             .await
             .unwrap(),
     ));
@@ -163,10 +167,11 @@ async fn test_fail_write() {
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
-    let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
-            .await
-            .unwrap();
+    let dst = S3Object::new(test_bucket, &dst_key);
+
+    let mut upload = AsyncMultipartUpload::new(&client, &dst, 5 * MIB as usize, None)
+        .await
+        .unwrap();
 
     let data_len = 6 * MIB as usize;
 
@@ -187,10 +192,10 @@ async fn test_fail_close() {
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
-    let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
-            .await
-            .unwrap();
+    let dst = S3Object::new(test_bucket, &dst_key);
+    let mut upload = AsyncMultipartUpload::new(&client, &dst, 5 * MIB as usize, None)
+        .await
+        .unwrap();
 
     let data_len = 6 * MIB as usize;
 
@@ -210,10 +215,10 @@ async fn test_s3objectseekableread() {
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
-    let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
-            .await
-            .unwrap();
+    let dst = S3Object::new(test_bucket, &dst_key);
+    let mut upload = AsyncMultipartUpload::new(&client, &dst, 5 * MIB as usize, None)
+        .await
+        .unwrap();
 
     let data_len = 6 * MIB as usize;
     upload.write_all(&vec![0; data_len]).await.unwrap();
@@ -241,10 +246,10 @@ async fn test_s3objectseekableread_seek() {
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
-    let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
-            .await
-            .unwrap();
+    let dst = S3Object::new(test_bucket, &dst_key);
+    let mut upload = AsyncMultipartUpload::new(&client, &dst, 5 * MIB as usize, None)
+        .await
+        .unwrap();
 
     let data_len = 6 * MIB as usize;
     upload.write_all(&vec![0; data_len]).await.unwrap();
@@ -274,10 +279,10 @@ async fn test_s3objectseekableread_seek_jump() {
 
     fixtures::create_bucket(&client, test_bucket).await.unwrap();
 
-    let mut upload =
-        AsyncMultipartUpload::new(&client, test_bucket, &dst_key, 5 * MIB as usize, None)
-            .await
-            .unwrap();
+    let dst = S3Object::new(test_bucket, &dst_key);
+    let mut upload = AsyncMultipartUpload::new(&client, &dst, 5 * MIB as usize, None)
+        .await
+        .unwrap();
 
     let data_len = 6 * MIB as usize;
     upload.write_all(&vec![0; data_len]).await.unwrap();

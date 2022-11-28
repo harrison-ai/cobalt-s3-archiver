@@ -129,12 +129,13 @@ pub mod fixtures {
     use aws_sdk_s3::types::SdkError;
     use aws_sdk_s3::Client;
     use bytesize::MIB;
+    use cobalt_aws::s3::S3Object;
     use rand::distributions::{Alphanumeric, DistString};
     use rand::Rng;
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
+    use s3_archiver::Compression;
     use s3_archiver::ManifestEntry;
-    use s3_archiver::{Compression, S3Object};
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     use typed_builder::TypedBuilder;

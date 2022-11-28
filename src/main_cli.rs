@@ -3,8 +3,9 @@ use aws_sdk_s3::Client;
 use bytesize::ByteSize;
 use clap::{Parser, Subcommand, ValueEnum};
 use cobalt_aws::config;
+use cobalt_aws::s3::S3Object;
 use futures::prelude::*;
-use s3_archiver::{Compression, S3Object};
+use s3_archiver::Compression;
 use std::io::{BufRead, BufReader};
 use tracing_subscriber::EnvFilter;
 
