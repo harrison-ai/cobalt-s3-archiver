@@ -6,10 +6,10 @@ use ::function_name::named;
 use bytesize::MIB;
 use cobalt_aws::s3::AsyncMultipartUpload;
 use cobalt_aws::s3::S3Object;
+use cobalt_s3_archiver::aws::S3ObjectSeekableRead;
 use common::aws::S3TestClient;
 use common::fixtures;
 use futures::prelude::*;
-use s3_archiver::aws::S3ObjectSeekableRead;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 #[cfg(feature = "test_containers")]

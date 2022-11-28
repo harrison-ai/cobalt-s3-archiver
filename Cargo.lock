@@ -682,6 +682,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cobalt-async"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b98f270892807aa9f71428e217791c82ccee09d6b8ff54419b2f379f19328a0"
+dependencies = [
+ "anyhow",
+ "crc32fast",
+ "futures",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "cobalt-aws"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -707,6 +719,40 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
+]
+
+[[package]]
+name = "cobalt-s3-archiver"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_cmd",
+ "async-trait",
+ "async_zip",
+ "aws-config",
+ "aws-sdk-s3",
+ "bytes",
+ "bytesize",
+ "clap",
+ "cobalt-async",
+ "cobalt-aws",
+ "crc32fast",
+ "function_name",
+ "futures",
+ "pin-project-lite",
+ "rand",
+ "rand_chacha",
+ "serde",
+ "serde_json",
+ "testcontainers",
+ "tokio",
+ "tokio-stream",
+ "tokio-test",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "typed-builder",
  "url",
 ]
 
@@ -1827,39 +1873,6 @@ name = "ryu"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4501abdff3ae82a1c1b477a17252eb69cee9e66eb915c1abaa4f44d873df9f09"
-
-[[package]]
-name = "s3-archiver"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "assert_cmd",
- "async-trait",
- "async_zip",
- "aws-config",
- "aws-sdk-s3",
- "bytes",
- "bytesize",
- "clap",
- "cobalt-aws",
- "crc32fast",
- "function_name",
- "futures",
- "pin-project-lite",
- "rand",
- "rand_chacha",
- "serde",
- "serde_json",
- "testcontainers",
- "tokio",
- "tokio-stream",
- "tokio-test",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "typed-builder",
- "url",
-]
 
 [[package]]
 name = "schannel"

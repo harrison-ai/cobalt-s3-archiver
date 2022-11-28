@@ -2,11 +2,14 @@ pub mod common;
 
 use ::function_name::named;
 use cobalt_aws::s3::S3Object;
+use cobalt_s3_archiver::{
+    validate_manifest_file, validate_zip_central_dir, validate_zip_entry_bytes, Archiver,
+    Compression, ManifestEntry,
+};
 use common::aws::S3TestClient;
 use common::fixtures;
 use futures::prelude::*;
 use rand::Rng;
-use s3_archiver::{Compression, ManifestEntry};
 use std::io::prelude::*;
 
 #[tokio::test]
@@ -28,9 +31,7 @@ async fn test_put_get() {
         .unwrap();
 
     let dst: S3Object = S3Object::new(test_bucket, dst_key);
-    let archiver = s3_archiver::Archiver::builder()
-        .compression(Compression::Stored)
-        .build();
+    let archiver = Archiver::builder().compression(Compression::Stored).build();
     archiver
         .create_zip(&s3_client, vec![Ok(src)].into_iter(), &dst, None)
         .await
@@ -62,9 +63,7 @@ async fn test_put_get_with_manifest() {
         .unwrap();
 
     let dst: S3Object = S3Object::new(test_bucket, dst_key);
-    let archiver = s3_archiver::Archiver::builder()
-        .compression(Compression::Stored)
-        .build();
+    let archiver = Archiver::builder().compression(Compression::Stored).build();
     archiver
         .create_zip(
             &s3_client,
@@ -279,14 +278,14 @@ async fn test_validate_zip_entry_whole_file() {
         fixtures::create_and_validate_zip(&s3_client, &args)
             .await
             .expect("Error creating and validating with {compression:?}");
-        s3_archiver::validate_zip_entry_bytes(
+        validate_zip_entry_bytes(
             &s3_client,
             args.manifest_file.as_ref().unwrap(),
             &args.dst_obj,
         )
         .await
         .expect("Error creating and validating zip entry bytes {compression:?}");
-        s3_archiver::validate_zip_central_dir(
+        validate_zip_central_dir(
             &s3_client,
             args.manifest_file.as_ref().unwrap(),
             &args.dst_obj,
@@ -318,7 +317,7 @@ async fn test_validate_zip_entry_streamed_file() {
             .await
             .expect("Error creating and validating with {compression:?}");
 
-        let bytes_result = s3_archiver::validate_zip_entry_bytes(
+        let bytes_result = validate_zip_entry_bytes(
             &s3_client,
             args.manifest_file.as_ref().unwrap(),
             &args.dst_obj,
@@ -332,7 +331,7 @@ async fn test_validate_zip_entry_streamed_file() {
             }
        }
 
-        s3_archiver::validate_zip_central_dir(
+        validate_zip_central_dir(
             &s3_client,
             args.manifest_file.as_ref().unwrap(),
             &args.dst_obj,
@@ -360,7 +359,7 @@ async fn test_validate_invalid_manifest_fails() {
         .await
         .expect("Error creating and validating with {compression:?}");
 
-    let bytes_result = s3_archiver::validate_zip_entry_bytes(
+    let bytes_result = validate_zip_entry_bytes(
         &s3_client,
         args.manifest_file.as_ref().unwrap(),
         &args.dst_obj,
@@ -391,7 +390,7 @@ async fn test_validate_invalid_manifest_fails() {
     }
     writer.close().await.unwrap();
 
-    let bytes_result = s3_archiver::validate_zip_entry_bytes(
+    let bytes_result = validate_zip_entry_bytes(
         &s3_client,
         args.manifest_file.as_ref().unwrap(),
         &args.dst_obj,
@@ -421,7 +420,7 @@ async fn test_validate_incomplete_manifest_fails() {
         .await
         .expect("Error creating and validating with {compression:?}");
 
-    let bytes_result = s3_archiver::validate_zip_entry_bytes(
+    let bytes_result = validate_zip_entry_bytes(
         &s3_client,
         args.manifest_file.as_ref().unwrap(),
         &args.dst_obj,
@@ -448,7 +447,7 @@ async fn test_validate_incomplete_manifest_fails() {
     }
     writer.close().await.unwrap();
 
-    let bytes_result = s3_archiver::validate_zip_entry_bytes(
+    let bytes_result = validate_zip_entry_bytes(
         &s3_client,
         args.manifest_file.as_ref().unwrap(),
         &args.dst_obj,
@@ -492,11 +491,9 @@ async fn test_validate_manifest() {
         .unwrap();
     writer.close().await.unwrap();
 
-    assert!(
-        s3_archiver::validate_manifest_file(&s3_client, &manifest_file, 1, 1)
-            .await
-            .is_ok()
-    );
+    assert!(validate_manifest_file(&s3_client, &manifest_file, 1, 1)
+        .await
+        .is_ok());
 }
 
 #[tokio::test]
@@ -531,9 +528,7 @@ async fn test_validate_manifest_invalid_crc() {
         .unwrap();
     writer.close().await.unwrap();
 
-    assert!(
-        s3_archiver::validate_manifest_file(&s3_client, &manifest_file, 1, 1)
-            .await
-            .is_err()
-    );
+    assert!(validate_manifest_file(&s3_client, &manifest_file, 1, 1)
+        .await
+        .is_err());
 }
