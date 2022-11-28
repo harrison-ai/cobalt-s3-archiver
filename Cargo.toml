@@ -33,6 +33,7 @@ aws-sdk-s3 = "0.21.0"
 bytesize = "1.1.0"
 clap = { version = "4.0.27", features = ["derive"] }
 cobalt-aws = "0.9.1"
+cobalt-async = { version = "0.4.0", features = ["checksum"]}
 futures = "0.3.25"
 pin-project-lite = "0.2.9"
 serde = { version = "1.0.148", features = ["derive"] }

@@ -682,6 +682,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cobalt-async"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b98f270892807aa9f71428e217791c82ccee09d6b8ff54419b2f379f19328a0"
+dependencies = [
+ "anyhow",
+ "crc32fast",
+ "futures",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "cobalt-aws"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -723,6 +735,7 @@ dependencies = [
  "bytes",
  "bytesize",
  "clap",
+ "cobalt-async",
  "cobalt-aws",
  "crc32fast",
  "function_name",

@@ -1,17 +1,15 @@
 //! Allows ZIP archives to be created in S3 from files stored in S3.
 pub mod aws;
-pub mod checksum;
-pub mod counter;
 
 use std::sync::Arc;
 
-use crate::counter::ByteLimit;
 use anyhow::Error;
 use anyhow::{ensure, Context, Result};
 use async_zip::{Compression as AsyncCompression, ZipEntryBuilder};
 use aws_sdk_s3::output::GetObjectOutput;
-use checksum::CRC32Sink;
 use clap::ValueEnum;
+use cobalt_async::checksum::CRC32Sink;
+use cobalt_async::counter::ByteLimit;
 use cobalt_aws::s3::AsyncMultipartUpload;
 use cobalt_aws::s3::S3Object;
 use futures::future;
