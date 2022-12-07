@@ -532,3 +532,74 @@ async fn test_validate_manifest_invalid_crc() {
         .await
         .is_err());
 }
+
+#[tokio::test]
+#[named]
+async fn test_unarchive_invalid_dst() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let test_bucket = "test-bucket";
+    let mut rng = fixtures::seeded_rng(function_name!());
+    let src_key = fixtures::gen_random_file_name(&mut rng);
+    let dst_key = fixtures::gen_random_file_name(&mut rng);
+    let src = S3Object::new(test_bucket, &src_key);
+    fixtures::create_bucket(&s3_client, test_bucket)
+        .await
+        .unwrap();
+    fixtures::create_random_file(&s3_client, &src, 10)
+        .await
+        .unwrap();
+
+    let dst: S3Object = S3Object::new(test_bucket, &dst_key);
+    let archiver = Archiver::builder().compression(Compression::Stored).build();
+    archiver
+        .create_zip(&s3_client, vec![Ok(src)].into_iter(), &dst, None)
+        .await
+        .expect("Expected zip creation");
+
+    let unarchive_prefix = fixtures::gen_random_file_name(&mut rng);
+    let unarchive_dst = S3Object::new(test_bucket, &unarchive_prefix);
+    assert!(
+        cobalt_s3_archiver::unarchive_all(&s3_client, &dst, &unarchive_dst)
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+#[named]
+async fn test_unarchive() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let test_bucket = "test-bucket";
+    let mut rng = fixtures::seeded_rng(function_name!());
+    let src_key = fixtures::gen_random_file_name(&mut rng);
+    let dst_key = fixtures::gen_random_file_name(&mut rng);
+    let src = S3Object::new(test_bucket, &src_key);
+    fixtures::create_bucket(&s3_client, test_bucket)
+        .await
+        .unwrap();
+    fixtures::create_random_file(&s3_client, &src, 10)
+        .await
+        .unwrap();
+
+    let dst: S3Object = S3Object::new(test_bucket, &dst_key);
+    let archiver = Archiver::builder().compression(Compression::Stored).build();
+    archiver
+        .create_zip(&s3_client, vec![Ok(src)].into_iter(), &dst, None)
+        .await
+        .expect("Expected zip creation");
+
+    let unarchive_prefix = fixtures::gen_random_file_name(&mut rng) + "/";
+    let unarchive_dst = S3Object::new(test_bucket, &unarchive_prefix);
+    cobalt_s3_archiver::unarchive_all(&s3_client, &dst, &unarchive_dst)
+        .await
+        .unwrap();
+
+    let extracted_key = S3Object::new(test_bucket, unarchive_prefix + &src_key);
+    assert!(fixtures::check_object_exists(&s3_client, &extracted_key)
+        .await
+        .unwrap());
+}
