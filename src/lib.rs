@@ -7,7 +7,6 @@ use anyhow::Error;
 use anyhow::{ensure, Context, Result};
 use async_zip::{Compression as AsyncCompression, ZipEntryBuilder};
 use aws_sdk_s3::output::GetObjectOutput;
-use bytesize::MIB;
 use clap::ValueEnum;
 use cobalt_async::checksum::CRC32Sink;
 use cobalt_async::counter::ByteLimit;
@@ -442,6 +441,7 @@ pub async fn unarchive_all(
     client: &aws_sdk_s3::Client,
     zip_file: &S3Object,
     dst: &S3Object,
+    chunk_size: usize,
 ) -> Result<()> {
     ensure!(dst.key.ends_with('/'), "destination key must end with `/`");
 
@@ -461,12 +461,9 @@ pub async fn unarchive_all(
             let entry_name = entry.filename().to_owned();
             let entry_size = entry.uncompressed_size();
             let dst_key = dst.key.to_owned() + &entry_name;
-            //TODO:: Change this to chunk size.
-            if entry_size > 5 * MIB as u32 {
+            if entry_size > chunk_size.try_into()? {
                 let dst_file = S3Object::new(&dst.bucket, dst_key);
-                //TODO:: Pass chunk size as param
-                let writer =
-                    AsyncMultipartUpload::new(client, &dst_file, 5 * MIB as usize, None).await?;
+                let writer = AsyncMultipartUpload::new(client, &dst_file, chunk_size, None).await?;
                 let mut tokio_sink = FuturesAsyncWriteCompatExt::compat_write(writer);
                 reader
                     .copy_to_end_crc(&mut tokio_sink, 64 * bytesize::KIB as usize)
