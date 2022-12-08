@@ -25,7 +25,7 @@ enum Command {
     ///Validate the calculated crc32 of files in the manifest match those recorded the manifest.
     ValidateManifest(ValidateManifestCommand),
     ///Extract compressed files from archive.
-    Unarchive(UnArchiveCommand),
+    Unarchive(UnarchiveCommand),
 }
 
 #[derive(Parser, Debug, PartialEq, Clone)]
@@ -68,7 +68,7 @@ struct ArchiveCommand {
 }
 
 #[derive(Parser, Debug, PartialEq, Clone)]
-struct UnArchiveCommand {
+struct UnarchiveCommand {
     /// S3 input ZIP object `s3://{bucket}/{key}`
     input_location: S3Object,
     /// S3 output location `s3://{bucket}/{key}`

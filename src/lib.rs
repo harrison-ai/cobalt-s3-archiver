@@ -437,6 +437,9 @@ pub async fn validate_zip_entry_bytes(
     Ok(())
 }
 
+/// Extract all files from the ZIP at the `zip_file` location into the destination prefix.
+/// If any of the files in the ZIP are larger than `chunk_size` then is is uploaded to S3
+/// as a multipart upload.
 pub async fn unarchive_all(
     client: &aws_sdk_s3::Client,
     zip_file: &S3Object,
