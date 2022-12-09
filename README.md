@@ -14,6 +14,7 @@ Commands:
   archive            Create an ZIP archive in S3 from source files in S3
   validate-archive   Validate a ZIP archive matches the given manifest
   validate-manifest  Validate the calculated crc32 of files in the manifest match those recorded the manifest
+  unarchive          Extract compressed files from archive
   help               Print this message or the help of the given subcommand(s)
 
 Options:

@@ -390,3 +390,37 @@ fn test_validate_manifest_c_with_manifest() {
     cmd.arg("s3://test/file");
     cmd.assert().failure();
 }
+
+#[tokio::test]
+#[named]
+async fn test_cli_unarchive() {
+    let test_client = S3TestClient::default();
+    let (container, s3_client) = test_client.client().await;
+    let env = get_aws_env(&container);
+
+    let mut rng = fixtures::seeded_rng(function_name!());
+    let args = fixtures::CheckZipArgs::seeded_args(&mut rng, 10, Some(&["dir_one", "dir_two"]));
+    fixtures::create_and_validate_zip(&s3_client, &args)
+        .await
+        .unwrap();
+    let unarchive_prefix = fixtures::gen_random_file_name(&mut rng) + "/";
+    let unarchive_dst = S3Object::new(args.src_bucket, &unarchive_prefix);
+
+    let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("unarchive");
+    cmd.arg(Url::try_from(&args.dst_obj).unwrap().as_str());
+    cmd.arg(Url::try_from(&unarchive_dst).unwrap().as_str());
+    cmd.envs(env);
+    let output = cmd.output().unwrap();
+    io::stdout().write_all(&output.stdout).unwrap();
+    io::stderr().write_all(&output.stderr).unwrap();
+
+    assert!(output.status.success());
+    for obj in args.src_keys {
+        let extracted_obj =
+            S3Object::new(&unarchive_dst.bucket, unarchive_prefix.to_owned() + &obj);
+        assert!(fixtures::check_object_exists(&s3_client, &extracted_obj)
+            .await
+            .unwrap());
+    }
+}

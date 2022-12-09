@@ -10,8 +10,8 @@ use aws_sdk_s3::output::GetObjectOutput;
 use clap::ValueEnum;
 use cobalt_async::checksum::CRC32Sink;
 use cobalt_async::counter::ByteLimit;
-use cobalt_aws::s3::AsyncMultipartUpload;
 use cobalt_aws::s3::S3Object;
+use cobalt_aws::s3::{AsyncMultipartUpload, AsyncPutObject};
 use futures::future;
 use futures::lock::Mutex;
 use futures::prelude::*;
@@ -433,6 +433,55 @@ pub async fn validate_zip_entry_bytes(
         manifest_lines.next_line().await?.is_none(),
         "Manifest has more entries that the zip."
     );
+
+    Ok(())
+}
+
+/// Extract all files from the ZIP at the `zip_file` location into the destination prefix.
+/// If any of the files in the ZIP are larger than `chunk_size` then is is uploaded to S3
+/// as a multipart upload.
+pub async fn unarchive_all(
+    client: &aws_sdk_s3::Client,
+    zip_file: &S3Object,
+    dst: &S3Object,
+    chunk_size: usize,
+) -> Result<()> {
+    ensure!(dst.key.ends_with('/'), "destination key must end with `/`");
+
+    let zip_response = client
+        .get_object()
+        .bucket(&zip_file.bucket)
+        .key(&zip_file.key)
+        .send()
+        .map_ok(|r| r.body.into_async_read())
+        .map_ok(|r| BufReader::with_capacity(64 * bytesize::KB as usize, r))
+        .await;
+
+    let mut zip_reader = async_zip::read::stream::ZipFileReader::new(zip_response?);
+    while !zip_reader.finished() {
+        if let Some(reader) = zip_reader.entry_reader().await? {
+            let entry = reader.entry();
+            let entry_name = entry.filename().to_owned();
+            let entry_size = entry.uncompressed_size();
+            let dst_key = dst.key.to_owned() + &entry_name;
+            if entry_size > chunk_size.try_into()? {
+                let dst_file = S3Object::new(&dst.bucket, dst_key);
+                let writer = AsyncMultipartUpload::new(client, &dst_file, chunk_size, None).await?;
+                let mut tokio_sink = FuturesAsyncWriteCompatExt::compat_write(writer);
+                reader
+                    .copy_to_end_crc(&mut tokio_sink, 64 * bytesize::KIB as usize)
+                    .await?;
+                tokio_sink.shutdown().await?;
+            } else {
+                let writer = AsyncPutObject::new(client, &dst.bucket, &dst_key);
+                let mut tokio_sink = FuturesAsyncWriteCompatExt::compat_write(writer);
+                reader
+                    .copy_to_end_crc(&mut tokio_sink, 64 * bytesize::KIB as usize)
+                    .await?;
+                tokio_sink.shutdown().await?;
+            }
+        }
+    }
 
     Ok(())
 }

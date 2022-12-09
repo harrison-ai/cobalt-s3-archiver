@@ -24,6 +24,8 @@ enum Command {
     ValidateArchive(ValidateCommand),
     ///Validate the calculated crc32 of files in the manifest match those recorded the manifest.
     ValidateManifest(ValidateManifestCommand),
+    ///Extract compressed files from archive.
+    Unarchive(UnarchiveCommand),
 }
 
 #[derive(Parser, Debug, PartialEq, Clone)]
@@ -63,6 +65,19 @@ struct ArchiveCommand {
     /// Some tools can not read ZIP files using data descriptors.
     #[clap(short = 'd', long = "data-descriptors")]
     data_descriptors: bool,
+}
+
+#[derive(Parser, Debug, PartialEq, Clone)]
+struct UnarchiveCommand {
+    /// S3 input ZIP object `s3://{bucket}/{key}`
+    input_location: S3Object,
+    /// S3 output location `s3://{bucket}/{key}`
+    output_location: S3Object,
+    /// Part size to use in multipart upload.
+    /// Accepts human readable bytes e.g. K, KiB.
+    /// Min 5MiB, Max 5GiB.
+    #[clap(short = 's', long = "part-size", default_value = "5MiB")]
+    part_size: ByteSize,
 }
 
 #[derive(Parser, Debug, PartialEq, Clone)]
@@ -191,6 +206,15 @@ async fn main() -> Result<()> {
                     &manifest_object
                 );
             Ok(())
+        }
+        Command::Unarchive(cmd) => {
+            cobalt_s3_archiver::unarchive_all(
+                &client,
+                &cmd.input_location,
+                &cmd.output_location,
+                usize::try_from(cmd.part_size.as_u64())?,
+            )
+            .await
         }
     }
 }
