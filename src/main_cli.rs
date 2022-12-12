@@ -293,6 +293,12 @@ impl From<&ZipEntry> for ListZipEntry {
 }
 
 /// Print the files in the archive.
+/// Prints out the:
+/// * Uncompressed size.
+/// * Last modified date.
+/// * Last modified time.
+/// * File name
+/// Quiet flag will only print out the entry data without headers.
 fn print_entries(src: &Url, entries: &ZipEntries, quiet: bool) {
     if !quiet {
         println!("Archive: {:}", src);
@@ -326,6 +332,12 @@ fn print_entries(src: &Url, entries: &ZipEntries, quiet: bool) {
 }
 
 /// Print the files in the archive.
+/// Prints out the same information as `print_entries` and additionally:
+/// * Compression method.
+/// * Compressed size.
+/// * Compression percentage.
+/// * CRC-32
+/// Quiet flag will only print out the entry data without headers.
 fn print_entries_verbose(src: &Url, entries: &ZipEntries, quiet: bool) {
     if !quiet {
         println!("Archive: {:}", src);
