@@ -1,4 +1,5 @@
 use anyhow::{ensure, Context, Result};
+use async_zip::ZipEntry;
 use aws_sdk_s3::Client;
 use bytesize::ByteSize;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -6,9 +7,12 @@ use cobalt_aws::config;
 use cobalt_aws::s3::S3Object;
 use cobalt_s3_archiver::Archiver;
 use cobalt_s3_archiver::Compression;
+use cobalt_s3_archiver::ZipEntries;
 use futures::prelude::*;
+use serde::Serialize;
 use std::io::{BufRead, BufReader};
 use tracing_subscriber::EnvFilter;
+use url::Url;
 
 #[derive(Parser, Debug, PartialEq, Clone)]
 struct Args {
@@ -26,6 +30,8 @@ enum Command {
     ValidateManifest(ValidateManifestCommand),
     ///Extract compressed files from archive.
     Unarchive(UnarchiveCommand),
+    ///List archive files
+    List(ListCommand),
 }
 
 #[derive(Parser, Debug, PartialEq, Clone)]
@@ -78,6 +84,22 @@ struct UnarchiveCommand {
     /// Min 5MiB, Max 5GiB.
     #[clap(short = 's', long = "part-size", default_value = "5MiB")]
     part_size: ByteSize,
+}
+
+#[derive(Parser, Debug, PartialEq, Clone)]
+struct ListCommand {
+    /// S3 input ZIP object `s3://{bucket}/{key}`
+    input_location: S3Object,
+    /// Supress printing of table headers
+    #[clap(short = 'q')]
+    quiet: bool,
+    /// Print extra entry information.
+    #[clap(short = 'v')]
+    verbose: bool,
+    #[clap(short = 'j',
+            conflicts_with_all = ["verbose", "quiet"]
+           )]
+    json: bool,
 }
 
 #[derive(Parser, Debug, PartialEq, Clone)]
@@ -216,7 +238,144 @@ async fn main() -> Result<()> {
             )
             .await
         }
+        Command::List(cmd) if cmd.json => {
+            let entries =
+                cobalt_s3_archiver::ZipEntries::new(&client, &cmd.input_location, None).await?;
+            print_entries_json(&entries)
+        }
+        Command::List(cmd) => {
+            let entries =
+                cobalt_s3_archiver::ZipEntries::new(&client, &cmd.input_location, None).await?;
+            if cmd.verbose {
+                print_entries_verbose(&Url::try_from(&cmd.input_location)?, &entries, cmd.quiet);
+            } else {
+                print_entries(&Url::try_from(&cmd.input_location)?, &entries, cmd.quiet);
+            }
+            Ok(())
+        }
     }
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+struct ListZipEntry {
+    compression: String,
+    compressed_size: u32,
+    uncompressed_size: u32,
+    compression_percentage: u8,
+    last_modification_date: String,
+    last_modification_time: String,
+    filename: String,
+    crc32: String,
+}
+
+impl From<&ZipEntry> for ListZipEntry {
+    fn from(entry: &ZipEntry) -> Self {
+        let compression_percent = if entry.uncompressed_size() == 0 {
+            0
+        } else {
+            100 - ((entry.uncompressed_size() as f32 / entry.compressed_size() as f32) * 100_f32)
+                as u8
+        };
+        ListZipEntry {
+            compression: format!("{:?}", entry.compression()),
+            compressed_size: entry.compressed_size(),
+            uncompressed_size: entry.uncompressed_size(),
+            compression_percentage: compression_percent,
+            last_modification_date: entry
+                .last_modification_date()
+                .format("%Y-%m-%d")
+                .to_string(),
+            last_modification_time: entry.last_modification_date().format("%H-%M").to_string(),
+            crc32: format!("{:08x}", entry.crc32()),
+            filename: entry.filename().to_string(),
+        }
+    }
+}
+
+/// Print the files in the archive.
+fn print_entries(src: &Url, entries: &ZipEntries, quiet: bool) {
+    if !quiet {
+        println!("Archive: {:}", src);
+        println!(
+            "{:^9} {:^10} {:^5}  {:^4}",
+            "Length", "Date", "Time", "Name"
+        );
+        println!("{:-<9} {:-<10} {:-<5}  {:-<4}", "", "", "", "");
+    }
+    let mut total_size: u32 = 0;
+    let mut file_count: u32 = 0;
+    for entry in entries.entries() {
+        let entry = ListZipEntry::from(entry);
+        println!(
+            "{:>9} {:>10} {:>5}  {}",
+            entry.uncompressed_size,
+            entry.last_modification_date,
+            entry.last_modification_time,
+            entry.filename
+        );
+        total_size += entry.uncompressed_size;
+        file_count += 1;
+    }
+    if !quiet {
+        println!("{:-<9} {:10} {:5}  {:-<7}", "", " ", " ", "");
+        println!(
+            "{:>9} {:10} {:5}  {:} files",
+            total_size, "", "", file_count
+        );
+    }
+}
+
+/// Print the files in the archive.
+fn print_entries_verbose(src: &Url, entries: &ZipEntries, quiet: bool) {
+    if !quiet {
+        println!("Archive: {:}", src);
+        println!(
+            "{:^9} {:^6} {:^7} {:^4} {:^10} {:^5} {:^8}  {:^4}",
+            "Length", "Method", "Size", "Cmpr", "Date", "Time", "CRC-32", "Name"
+        );
+        println!(
+            "{:-<9} {:-<6} {:-<7} {:-<4} {:-<10} {:-<5} {:-<8}  {:-<4}",
+            "", "", "", "", "", "", "", ""
+        );
+    }
+    let mut total_size: u32 = 0;
+    let mut total_length: u32 = 0;
+    let mut file_count: u32 = 0;
+    for entry in entries.entries() {
+        let entry: ListZipEntry = ListZipEntry::from(entry);
+        println!(
+            "{:>9} {:>6?} {:>7} {:>3}% {:>10} {:>5} {:08} {}",
+            entry.uncompressed_size,
+            entry.compression,
+            entry.compressed_size,
+            entry.compression_percentage,
+            entry.last_modification_date,
+            entry.last_modification_time,
+            entry.crc32,
+            entry.filename
+        );
+        total_length += entry.uncompressed_size;
+        total_size += entry.compressed_size;
+        file_count += 1;
+    }
+    if !quiet {
+        let total_compression = 100 - ((total_size as f32 / total_length as f32) * 100_f32) as u32;
+        println!(
+            "{:-<9} {:6} {:-<7} {:-<4} {:10} {:5} {:8}  {:-<7}",
+            "", "", "", "", "", "", "", ""
+        );
+        println!(
+            "{:>9} {:6} {:>7} {:>3}% {:10} {:5} {:8}  {:} files",
+            total_length, "", total_size, total_compression, "", "", "", file_count
+        );
+    }
+}
+
+pub fn print_entries_json(entries: &ZipEntries) -> Result<()> {
+    for entry in entries.entries() {
+        println!("{}", serde_json::to_string(&ListZipEntry::from(entry))?)
+    }
+    Ok(())
 }
 
 async fn validate_manifest_files_from_read(

@@ -1,5 +1,7 @@
 //! Allows ZIP archives to be created in S3 from files stored in S3.
 pub mod aws;
+mod list;
+pub use list::ZipEntries;
 
 use std::sync::Arc;
 
