@@ -10,7 +10,6 @@ use crate::aws::S3ObjectSeekableRead;
 pub struct ZipEntries<'a>(ZipFileReader<S3ObjectSeekableRead<'a>>);
 
 impl<'a> ZipEntries<'a> {
-
     ///Create a new `ZipEntries` for the `src` object.
     pub async fn new<'b>(
         client: &'b aws_sdk_s3::Client,
