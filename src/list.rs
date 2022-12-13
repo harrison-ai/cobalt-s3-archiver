@@ -22,7 +22,7 @@ impl<'a> ZipEntries<'a> {
     }
 }
 
-impl <'a> IntoIterator for &'a ZipEntries<'a> {
+impl<'a> IntoIterator for &'a ZipEntries<'a> {
     type Item = &'a ZipEntry;
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
