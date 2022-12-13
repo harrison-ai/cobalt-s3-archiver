@@ -299,7 +299,7 @@ fn print_entries(src: &Url, entries: &ZipEntries, quiet: bool) {
     }
     let mut total_size: u32 = 0;
     let mut file_count: u32 = 0;
-    for entry in entries.entries() {
+    for entry in entries {
         let entry = ListZipEntry::from(entry);
         println!(
             "{:>9} {:>10} {:>5}  {}",
@@ -342,7 +342,7 @@ fn print_entries_verbose(src: &Url, entries: &ZipEntries, quiet: bool) {
     let mut total_size: u32 = 0;
     let mut total_length: u32 = 0;
     let mut file_count: u32 = 0;
-    for entry in entries.entries() {
+    for entry in entries {
         let entry: ListZipEntry = ListZipEntry::from(entry);
         println!(
             "{:>9} {:>6?} {:>7} {:>3}% {:>10} {:>5} {:08} {}",
@@ -373,7 +373,7 @@ fn print_entries_verbose(src: &Url, entries: &ZipEntries, quiet: bool) {
 }
 
 pub fn print_entries_json(entries: &ZipEntries) -> Result<()> {
-    for entry in entries.entries() {
+    for entry in entries {
         println!("{}", serde_json::to_string(&ListZipEntry::from(entry))?)
     }
     Ok(())

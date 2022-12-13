@@ -644,7 +644,7 @@ async fn test_list_archive() {
     let entries = cobalt_s3_archiver::ZipEntries::new(&s3_client, &args.dst_obj, None)
         .await
         .unwrap();
-    for (obj, entry) in args.src_keys.iter().zip(entries.entries()) {
+    for (obj, entry) in args.src_keys.iter().zip(entries.into_iter()) {
         assert_eq!(obj, entry.filename())
     }
 }

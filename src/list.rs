@@ -20,9 +20,13 @@ impl<'a> ZipEntries<'a> {
         let zip_reader = async_zip::read::seek::ZipFileReader::new(s3_seek).await?;
         Ok(ZipEntries(zip_reader))
     }
+}
 
-    /// Return an `IntoIterator` over the entries in the archive file.
-    pub fn entries(&'a self) -> impl IntoIterator<Item = &'a ZipEntry> {
+impl <'a> IntoIterator for &'a ZipEntries<'a> {
+    type Item = &'a ZipEntry;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
         self.0.entries().into_iter()
     }
 }
