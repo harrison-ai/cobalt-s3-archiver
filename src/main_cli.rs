@@ -5,9 +5,8 @@ use bytesize::ByteSize;
 use clap::{Parser, Subcommand, ValueEnum};
 use cobalt_aws::config;
 use cobalt_aws::s3::S3Object;
-use cobalt_s3_archiver::Archiver;
-use cobalt_s3_archiver::Compression;
-use cobalt_s3_archiver::ZipEntries;
+use cobalt_s3_archiver as s3_archiver;
+use s3_archiver::{Archiver, Compression, ZipEntries};
 use futures::prelude::*;
 use serde::Serialize;
 use std::io::{BufRead, BufReader};
@@ -180,7 +179,7 @@ async fn main() -> Result<()> {
         }
         Command::ValidateArchive(cmd) => match cmd.crc32_validation_type {
             CRC32ValidationType::Bytes => {
-                cobalt_s3_archiver::validate_zip_entry_bytes(
+                s3_archiver::validate_zip_entry_bytes(
                     &client,
                     &cmd.manifest_file,
                     &cmd.zip_file,
@@ -193,7 +192,7 @@ async fn main() -> Result<()> {
                 Ok(())
             }
             CRC32ValidationType::CentralDirectory => {
-                cobalt_s3_archiver::validate_zip_central_dir(
+                s3_archiver::validate_zip_central_dir(
                     &client,
                     &cmd.manifest_file,
                     &cmd.zip_file,
@@ -216,7 +215,7 @@ async fn main() -> Result<()> {
             let manifest_object = cmd
                 .manifest_object
                 .context("Manifest object requied if not reading from stdin")?;
-            cobalt_s3_archiver::validate_manifest_file(
+            s3_archiver::validate_manifest_file(
                 &client,
                 &manifest_object,
                 cmd.fetch_concurrency,
@@ -230,7 +229,7 @@ async fn main() -> Result<()> {
             Ok(())
         }
         Command::Unarchive(cmd) => {
-            cobalt_s3_archiver::unarchive_all(
+            s3_archiver::unarchive_all(
                 &client,
                 &cmd.input_location,
                 &cmd.output_location,
@@ -240,12 +239,12 @@ async fn main() -> Result<()> {
         }
         Command::List(cmd) if cmd.json => {
             let entries =
-                cobalt_s3_archiver::ZipEntries::new(&client, &cmd.input_location, None).await?;
+                s3_archiver::ZipEntries::new(&client, &cmd.input_location, None).await?;
             print_entries_json(&entries)
         }
         Command::List(cmd) => {
             let entries =
-                cobalt_s3_archiver::ZipEntries::new(&client, &cmd.input_location, None).await?;
+                s3_archiver::ZipEntries::new(&client, &cmd.input_location, None).await?;
             if cmd.verbose {
                 print_entries_verbose(&Url::try_from(&cmd.input_location)?, &entries, cmd.quiet);
             } else {
@@ -402,7 +401,7 @@ async fn validate_manifest_files_from_read(
 
     futures::stream::iter(objects)
         .map_ok(|m| async move {
-            cobalt_s3_archiver::validate_manifest_file(
+            s3_archiver::validate_manifest_file(
                 client,
                 &m,
                 args.fetch_concurrency,
