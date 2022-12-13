@@ -6,8 +6,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use cobalt_aws::config;
 use cobalt_aws::s3::S3Object;
 use cobalt_s3_archiver as s3_archiver;
-use s3_archiver::{Archiver, Compression, ZipEntries};
 use futures::prelude::*;
+use s3_archiver::{Archiver, Compression, ZipEntries};
 use serde::Serialize;
 use std::io::{BufRead, BufReader};
 use tracing_subscriber::EnvFilter;
@@ -179,12 +179,8 @@ async fn main() -> Result<()> {
         }
         Command::ValidateArchive(cmd) => match cmd.crc32_validation_type {
             CRC32ValidationType::Bytes => {
-                s3_archiver::validate_zip_entry_bytes(
-                    &client,
-                    &cmd.manifest_file,
-                    &cmd.zip_file,
-                )
-                .await?;
+                s3_archiver::validate_zip_entry_bytes(&client, &cmd.manifest_file, &cmd.zip_file)
+                    .await?;
                 println!(
                     "The input archive {:?} bytes matched the manifest {:?}",
                     &cmd.zip_file, &cmd.manifest_file
@@ -192,12 +188,8 @@ async fn main() -> Result<()> {
                 Ok(())
             }
             CRC32ValidationType::CentralDirectory => {
-                s3_archiver::validate_zip_central_dir(
-                    &client,
-                    &cmd.manifest_file,
-                    &cmd.zip_file,
-                )
-                .await?;
+                s3_archiver::validate_zip_central_dir(&client, &cmd.manifest_file, &cmd.zip_file)
+                    .await?;
                 println!(
                     "The input archive {:?} central directory matched the manifest {:?}",
                     &cmd.zip_file, &cmd.manifest_file
@@ -238,13 +230,11 @@ async fn main() -> Result<()> {
             .await
         }
         Command::List(cmd) if cmd.json => {
-            let entries =
-                s3_archiver::ZipEntries::new(&client, &cmd.input_location, None).await?;
+            let entries = s3_archiver::ZipEntries::new(&client, &cmd.input_location, None).await?;
             print_entries_json(&entries)
         }
         Command::List(cmd) => {
-            let entries =
-                s3_archiver::ZipEntries::new(&client, &cmd.input_location, None).await?;
+            let entries = s3_archiver::ZipEntries::new(&client, &cmd.input_location, None).await?;
             if cmd.verbose {
                 print_entries_verbose(&Url::try_from(&cmd.input_location)?, &entries, cmd.quiet);
             } else {
