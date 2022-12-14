@@ -6,8 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 0.2.0
+
 - Unarchive command to extract files into S3.
-- List files in archive reading only Zip Central Directory data.
+- List command to List files in archive reading only Zip Central Directory 
 
 ## 0.1.0
 
