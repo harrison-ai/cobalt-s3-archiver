@@ -19,7 +19,7 @@ services:
       - localstack
 
   shellcheck:
-    image: koalaman/shellcheck:v0.8.0
+    image: koalaman/shellcheck:v0.9.0
     volumes:
       - '.:/app'
     working_dir: '/app'
