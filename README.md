@@ -2,8 +2,21 @@
 
 `s3-archiver` is a binary to create zip archives from multiple files in S3.
 
-Given an output S3 URL argument and list of line spaced S3 URLs on standard input `s3-archiver` will add each input file into an archive at the output S3 URL.  `s3-archiver` uses S3 multipart uploads in order
-to keep the memory usage low.
+Given an output S3 URL argument and list of line spaced S3 URLs on standard input `s3-archiver` will add each input file into an archive at the output S3 URL.  `s3-archiver` uses S3 multipart uploads in order to keep the memory usage low.
+
+[![Crates.io][crates-badge]][crates-url]
+[![docs.rs][docs-badge]][docs-badge]
+[![Apache 2.0 licensed][apache2.0-badge]][apache2.0-url]
+[![Build Status][actions-badge]][actions-url]
+
+[crates-badge]: https://img.shields.io/crates/v/cobalt-s3-archiver.svg
+[crates-url]: https://crates.io/crates/cobalt-s3-archiver
+[docs-badge]: https://img.shields.io/docsrs/async_zip
+[docs-url]:  https://docs.rs/cobalt-s3-archiver/
+[apache2.0-badge]: https://img.shields.io/badge/License-Apache_2.0-yellow.svg
+[apache2.0-url]:  https://github.com/harrison-ai/cobalt-s3-archiver/blob/main/LICENSE
+[actions-badge]: https://github.com/harrison-ai/cobalt-s3-archiver/actions/workflows/tests.yml/badge.svg?branch=main
+[actions-url]: https://github.com/harrison-ai/cobalt-s3-archiver/actions?query=branch%3Amain+
 
 ## Usage
 
