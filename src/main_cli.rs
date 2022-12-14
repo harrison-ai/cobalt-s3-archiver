@@ -230,11 +230,11 @@ async fn main() -> Result<()> {
             .await
         }
         Command::List(cmd) if cmd.json => {
-            let entries = s3_archiver::ZipEntries::new(&client, &cmd.input_location, None).await?;
+            let entries = s3_archiver::ZipEntries::new(&client, &cmd.input_location).await?;
             print_entries_json(&entries)
         }
         Command::List(cmd) => {
-            let entries = s3_archiver::ZipEntries::new(&client, &cmd.input_location, None).await?;
+            let entries = s3_archiver::ZipEntries::new(&client, &cmd.input_location).await?;
             if cmd.verbose {
                 print_entries_verbose(&Url::try_from(&cmd.input_location)?, &entries, cmd.quiet);
             } else {

@@ -14,9 +14,8 @@ impl<'a> ZipEntries<'a> {
     pub async fn new<'b>(
         client: &'b aws_sdk_s3::Client,
         src: &'b S3Object,
-        bytes_before_fetch: Option<u64>,
     ) -> Result<ZipEntries<'b>> {
-        let s3_seek = S3ObjectSeekableRead::new(client, src, bytes_before_fetch).await?;
+        let s3_seek = S3ObjectSeekableRead::new(client, src, None).await?;
         let zip_reader = async_zip::read::seek::ZipFileReader::new(s3_seek).await?;
         Ok(ZipEntries(zip_reader))
     }

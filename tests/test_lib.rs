@@ -641,7 +641,7 @@ async fn test_list_archive() {
     fixtures::create_and_validate_zip(&s3_client, &args)
         .await
         .unwrap();
-    let entries = cobalt_s3_archiver::ZipEntries::new(&s3_client, &args.dst_obj, None)
+    let entries = cobalt_s3_archiver::ZipEntries::new(&s3_client, &args.dst_obj)
         .await
         .unwrap();
     for (obj, entry) in args.src_keys.iter().zip(entries.into_iter()) {
