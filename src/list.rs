@@ -5,7 +5,7 @@ use cobalt_aws::s3::S3Object;
 
 use crate::aws::S3ObjectSeekableRead;
 
-/// Provide a method of iterating over the details in of archived
+/// Provide a method of iterating over the details of archived
 /// files without reading the entire archive.
 pub struct ZipEntries<'a>(ZipFileReader<S3ObjectSeekableRead<'a>>);
 
