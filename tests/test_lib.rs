@@ -629,3 +629,22 @@ async fn test_check_unarchive_with_dirs() {
             .unwrap());
     }
 }
+
+#[tokio::test]
+#[named]
+async fn test_list_archive() {
+    let test_client = S3TestClient::default();
+    let (_container, s3_client) = test_client.client().await;
+
+    let mut rng = fixtures::seeded_rng(function_name!());
+    let args = fixtures::CheckZipArgs::seeded_args(&mut rng, 10, Some(&["dir_one", "dir_two"]));
+    fixtures::create_and_validate_zip(&s3_client, &args)
+        .await
+        .unwrap();
+    let entries = cobalt_s3_archiver::ZipEntries::new(&s3_client, &args.dst_obj)
+        .await
+        .unwrap();
+    for (obj, entry) in args.src_keys.iter().zip(entries.into_iter()) {
+        assert_eq!(obj, entry.filename())
+    }
+}

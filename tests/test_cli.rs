@@ -6,6 +6,7 @@ use bytesize::MIB;
 use cobalt_aws::s3::S3Object;
 use common::aws::S3TestClient;
 use common::fixtures;
+use predicates::prelude::*;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use testcontainers::{Container, Image};
@@ -423,4 +424,29 @@ async fn test_cli_unarchive() {
             .await
             .unwrap());
     }
+}
+
+#[tokio::test]
+#[named]
+async fn test_cli_list() {
+    let test_client = S3TestClient::default();
+    let (container, s3_client) = test_client.client().await;
+    let env = get_aws_env(&container);
+
+    let mut rng = fixtures::seeded_rng(function_name!());
+    let args = fixtures::CheckZipArgs::seeded_args(&mut rng, 10, Some(&["dir_one", "dir_two"]));
+    fixtures::create_and_validate_zip(&s3_client, &args)
+        .await
+        .unwrap();
+
+    let mut cmd = Command::cargo_bin("s3-archiver-cli").unwrap();
+    cmd.arg("list");
+    cmd.arg(Url::try_from(&args.dst_obj).unwrap().as_str());
+    cmd.envs(env);
+
+    let mut assert = cmd.assert();
+    for obj in args.src_keys {
+        assert = assert.stdout(predicate::str::contains(obj));
+    }
+    assert.success();
 }

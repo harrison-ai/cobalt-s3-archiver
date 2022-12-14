@@ -15,6 +15,7 @@ Commands:
   validate-archive   Validate a ZIP archive matches the given manifest
   validate-manifest  Validate the calculated crc32 of files in the manifest match those recorded the manifest
   unarchive          Extract compressed files from archive
+  list               List archive files
   help               Print this message or the help of the given subcommand(s)
 
 Options:
