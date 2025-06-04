@@ -145,7 +145,7 @@ pub struct Archiver<'a> {
     data_descriptors: bool,
 }
 
-impl<'a> Archiver<'a> {
+impl Archiver<'_> {
     /// Returns the [ZipWrite] type based on
     /// if the [Archiver] was created with
     /// `data_descriptors` set to true of false.

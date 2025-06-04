@@ -287,6 +287,7 @@ impl From<&ZipEntry> for ListZipEntry {
 /// * Last modified date.
 /// * Last modified time.
 /// * File name
+///
 /// Quiet flag will only print out the entry data without headers.
 fn print_entries(src: &Url, entries: &ZipEntries, quiet: bool) {
     if !quiet {
@@ -326,6 +327,7 @@ fn print_entries(src: &Url, entries: &ZipEntries, quiet: bool) {
 /// * Compressed size.
 /// * Compression percentage.
 /// * CRC-32
+///
 /// Quiet flag will only print out the entry data without headers.
 fn print_entries_verbose(src: &Url, entries: &ZipEntries, quiet: bool) {
     if !quiet {

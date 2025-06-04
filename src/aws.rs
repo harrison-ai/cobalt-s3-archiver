@@ -81,13 +81,13 @@ enum S3SeekState<'a> {
     None,
 }
 
-impl<'a> Default for S3SeekState<'a> {
+impl Default for S3SeekState<'_> {
     fn default() -> Self {
         Self::Pending
     }
 }
 
-impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
+impl AsyncRead for S3ObjectSeekableRead<'_> {
     #[instrument(level = "trace", skip(self, cx, buf))]
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -148,7 +148,7 @@ impl<'a> AsyncRead for S3ObjectSeekableRead<'a> {
     }
 }
 
-impl<'a> AsyncSeek for S3ObjectSeekableRead<'a> {
+impl AsyncSeek for S3ObjectSeekableRead<'_> {
     #[instrument(level = "trace", skip(self))]
     fn start_seek(mut self: Pin<&mut Self>, position: std::io::SeekFrom) -> std::io::Result<()> {
         //Set State to Pending and calculate current position
