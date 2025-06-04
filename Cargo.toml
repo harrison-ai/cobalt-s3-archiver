@@ -30,7 +30,7 @@ anyhow = "1"
 async_zip = { version = "0.0.9" }
 aws-config = "0.51.0"
 aws-sdk-s3 = "0.21.0"
-bytesize = "1.1.0"
+bytesize = "2.0.0"
 clap = { version = "4.1.1", features = ["derive"] }
 cobalt-aws = "0.9.2"
 cobalt-async = { version = "0.4.0", features = ["checksum"]}
