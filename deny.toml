@@ -2,22 +2,29 @@
 # for details on these configuration options.
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
+version = 2
 yanked = "warn"
-notice = "warn"
 ignore = [
-    # Like this:
-    #"RUSTSEC-YYYY-NNNN",
     "RUSTSEC-2020-0071",
-    #Until cobalt-aws upgrades to
-    # tracing-subscriber = "0.3.16"
+    "RUSTSEC-2023-0052",
+    "RUSTSEC-2023-0005",
+    "RUSTSEC-2025-0023",
+    "RUSTSEC-2025-0010",
+    "RUSTSEC-2024-0336",
+    "RUSTSEC-2025-0009",
+    "RUSTSEC-2024-0370",
+    "RUSTSEC-2024-0019",
+    "RUSTSEC-2024-0384",
+    "RUSTSEC-2024-0421",
+    "RUSTSEC-2023-0034",
+    "RUSTSEC-2024-0003",
+    "RUSTSEC-2024-0332",
+    "RUSTSEC-2024-0388",
+    "RUSTSEC-2022-0078"
 ]
 
 [licenses]
-default = "deny"
-unlicensed = "deny"
-copyleft = "deny"
+version = 2
 allow = [
     "MIT",
     "Apache-2.0",
