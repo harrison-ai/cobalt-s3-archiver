@@ -1,11 +1,11 @@
-## 
+##
 ## Project Makefile for cobalt-s3-archiver
-## 
+##
 
 .DEFAULT_GOAL := help
 
 ## Customizable settings
-## 
+##
 ## BUILD_PROFILE:			build profile for Rust code ("dev" or "release").
 BUILD_PROFILE ?= dev
 
@@ -26,15 +26,15 @@ endif
 IMAGES ?= $(shell find ./src/ -mindepth 2 -maxdepth 2 -name Dockerfile | cut -d '/' -f 3)
 
 UID = $(shell id -u)
-DCRUN = docker-compose run --rm --user $(UID)
+DCRUN = docker compose run --rm --user $(UID)
 DOCKER_BUILD = docker build --platform arm64 --build-arg BUILD_PROFILE=$(BUILD_PROFILE)
 
 export COMPOSE_DOCKER_CLI_BUILD = 1
 export DOCKER_BUILDKIT = 1
 
-## 
+##
 ## Available targets
-## 
+##
 ## test: 				run all the tests
 test: cargo-init
 	$(DCRUN) cargo test
@@ -85,5 +85,3 @@ pull:
 ## help:				show this help
 help:
 	@sed -ne '/@sed/!s/## //p' $(MAKEFILE_LIST)
-
-
