@@ -232,11 +232,10 @@ pub mod fixtures {
         use std::io::prelude::*;
         use std::io::BufReader;
         let manifest_bytes = match manifest_obj {
-            Some(obj) => Some(fetch_bytes(client, obj).await?)
-                .map(std::io::Cursor::new)
-                .map(BufReader::new)
-                .map(|b| b.lines()),
-            //.map(|i|i.chain(std::iter::repeat(Ok("".to_owned)))),
+            Some(obj) => Some(BufReader::new(std::io::Cursor::new(
+                fetch_bytes(client, obj).await?,
+            )))
+            .map(|b| b.lines()),
             None => None,
         };
 
@@ -343,7 +342,7 @@ pub mod fixtures {
         }
     }
 
-    impl<'a> Default for CheckZipArgs<'a> {
+    impl Default for CheckZipArgs<'_> {
         fn default() -> Self {
             let dst_obj = S3Object::new("dst-bucket", "dst_check_file.zip");
             let prefix_to_strip = Option::<&str>::None;
