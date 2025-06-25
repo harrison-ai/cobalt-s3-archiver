@@ -60,7 +60,7 @@ path = "src/lib.rs"
 [dev-dependencies]
 assert_cmd = "2.0.8"
 function_name = "0.3.0"
-predicates = "2.1.5"
+predicates = "3.0.0"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 testcontainers = "0.14.0"
